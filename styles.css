@@ -24,6 +24,7 @@
   --row: 30px;
   --line: 20px;
   --gutter: 52px;
+  --bar: 34px; /* the views bar, the preview head and the dock tabs share it, so they line up */
 }
 
 * { box-sizing: border-box; }
@@ -198,12 +199,13 @@ form.row input[type="text"] { flex: 1; min-width: 120px; }
 .t-fn { color: #61afef; }
 .t-punct { color: var(--text-2); }
 
-/* The views: filters over the one file, sticky over the buffer */
-.views { position: sticky; top: 0; left: 0; z-index: 4; display: flex; align-items: center; gap: var(--s1); padding: var(--s1) var(--s3); background: var(--bg-sunken); border-bottom: 1px solid var(--border); }
-.views button { padding: 3px 8px; border: 0; border-radius: 4px; color: var(--text-2); font: 12px var(--mono); }
-.views button.sel { color: var(--text); background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.views button:hover:enabled { border-color: transparent; color: var(--text); }
-.view-hint { margin-left: var(--s2); font-size: 12px; color: var(--text-3); }
+/* The views: filters over the one file, sticky over the buffer — a bar the
+   height of the preview's, with the dock's tab style, so the three bars line up. */
+.views { position: sticky; top: 0; left: 0; z-index: 4; display: flex; align-items: stretch; gap: var(--s1); height: var(--bar); padding: 0 var(--s3); background: var(--bg-sunken); border-bottom: 1px solid var(--border); }
+.views button { padding: 0 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-2); font: 12px var(--font); background: none; }
+.views button.sel { color: var(--text); border-bottom-color: var(--accent); }
+.views button:hover:enabled { border-color: transparent; border-bottom-color: var(--border-strong); color: var(--text); }
+.view-hint { align-self: center; margin-left: var(--s2); font-size: 12px; color: var(--text-3); }
 .buffer[data-view="css"] .line:not([data-lang="css"]), .buffer[data-view="js"] .line:not([data-lang="js"]) { display: none; }
 .line:focus-within { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .line:focus-within .ln { color: var(--text-2); }
@@ -220,13 +222,13 @@ form.row input[type="text"] { flex: 1; min-width: 120px; }
 
 /* The right: the running page, then the dock */
 .right { display: flex; flex-direction: column; overflow: hidden; }
-.preview-head { display: flex; align-items: center; gap: var(--s2); flex: none; padding: var(--s1) var(--s3); font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--border); }
+.preview-head { display: flex; align-items: center; gap: var(--s2); flex: none; height: var(--bar); padding: 0 var(--s3); font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--border); }
 .preview-head .what { font-family: var(--mono); color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview-head label { display: flex; gap: 4px; align-items: center; }
 .preview { flex: 1 1 52%; min-height: 140px; width: 100%; border: 0; background: #fff; }
 .dock { flex: 1 1 48%; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--bg-raised); }
-.tabs { display: flex; gap: var(--s1); flex: none; padding: var(--s1) var(--s3) 0; border-bottom: 1px solid var(--border); }
-.tabs button { padding: 4px 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-2); font-size: 12px; }
+.tabs { display: flex; align-items: stretch; gap: var(--s1); flex: none; height: var(--bar); padding: 0 var(--s3); border-bottom: 1px solid var(--border); }
+.tabs button { padding: 0 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-2); font-size: 12px; }
 .tabs button.sel { color: var(--text); border-bottom-color: var(--accent); }
 .tabs button:hover:enabled { border-color: transparent; border-bottom-color: var(--border-strong); color: var(--text); }
 .tab { flex: 1; min-height: 0; overflow: auto; padding: var(--s3); }
