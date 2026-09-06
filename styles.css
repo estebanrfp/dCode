@@ -1,0 +1,219 @@
+/* dCode — the design language of GenosDB's own examples: dark, one accent,
+   system type for the chrome and monospace for everything the graph holds. */
+
+:root {
+  --bg: #0d0f12;
+  --bg-raised: #14171c;
+  --bg-sunken: #090b0e;
+  --text: #e8eaed;
+  --text-2: #9aa3ad;
+  --text-3: #5c6570;
+  --accent: #4c8dff;
+  --warn: #f5a623;
+  --danger: #ef5350;
+  --ok: #4caf7d;
+  --border: #262b33;
+  --border-strong: #333a44;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --row: 30px;
+  --side: 260px;
+  --timeline: 400px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--font);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, kbd, pre, textarea, input.mono, .mono { font-family: var(--mono); }
+code { font-size: 12px; }
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: 20px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-bottom: var(--s2); }
+h3 { font-size: 14px; }
+p { margin: 0 0 var(--s2); }
+.muted { color: var(--text-2); }
+.dim { color: var(--text-3); }
+.hidden { display: none !important; }
+
+button, input[type="submit"] {
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: 13px var(--font);
+  cursor: pointer;
+}
+button:hover:enabled { border-color: var(--accent); }
+button:disabled { opacity: .4; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.small { padding: 2px 7px; font-size: 12px; }
+input[type="text"], input[type="url"], textarea, select {
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: 13px var(--font);
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; }
+form.row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+form.row input[type="text"] { flex: 1; min-width: 120px; }
+
+/* The bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: 0 var(--s4);
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.brand { font: 700 15px var(--mono); color: var(--text); }
+.brand:hover { text-decoration: none; color: var(--accent); }
+.nav a { color: var(--text-2); margin-right: var(--s3); font-size: 13px; }
+.nav a.sel { color: var(--text); }
+.session { margin-left: auto; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.session .who { color: var(--text); font-family: var(--mono); font-size: 12px; }
+.notice { padding: var(--s2) var(--s4); background: color-mix(in srgb, var(--warn) 16%, var(--bg)); color: var(--text); font-size: 13px; border-bottom: 1px solid var(--border); }
+.main { flex: 1; padding: var(--s4); min-width: 0; }
+.loading { color: var(--text-2); }
+.footer { padding: var(--s3) var(--s4); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }
+.footer a { color: var(--text-3); }
+.presence { font-family: var(--mono); }
+
+/* Repositories */
+.page { max-width: 880px; margin: 0 auto; }
+.page .lede { color: var(--text-2); max-width: 70ch; }
+.repos { list-style: none; margin: var(--s4) 0 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.repos li { display: grid; grid-template-columns: 1fr auto; gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border); }
+.repos li:last-child { border-bottom: none; }
+.repos .name { font: 600 15px var(--mono); }
+.repos .desc { grid-column: 1 / -1; color: var(--text-2); }
+.repos .meta { color: var(--text-3); font-size: 12px; white-space: nowrap; text-align: right; }
+.empty { padding: var(--s5); color: var(--text-2); text-align: center; border: 1px dashed var(--border-strong); border-radius: 8px; }
+
+/* Forms: new repo, login, constitution */
+.formtable { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s3); align-items: start; max-width: 720px; }
+.formtable label { padding-top: 6px; color: var(--text-2); font-size: 13px; }
+.formtable input[type="text"], .formtable textarea { width: 100%; }
+.formtable textarea.code { font: 12px/1.5 var(--mono); min-height: 240px; white-space: pre; }
+.formtable .actions { grid-column: 2; display: flex; gap: var(--s2); flex-wrap: wrap; }
+.formtable .note { grid-column: 2; font-size: 12px; color: var(--text-3); }
+.formtable .danger { color: var(--danger); }
+.demo a { margin-right: var(--s3); }
+.status { min-height: 1.5em; color: var(--text); }
+.constitution { max-width: 760px; }
+.constitution h2 { margin-top: var(--s5); }
+.constitution table { border-collapse: collapse; }
+.constitution td { padding: var(--s1) var(--s3) var(--s1) 0; vertical-align: top; }
+.constitution td:first-child { font-family: var(--mono); white-space: nowrap; color: var(--text); }
+.constitution .rule { color: var(--text-2); font-size: 13px; }
+.constitution code { overflow-wrap: anywhere; }
+
+/* A repository: three columns — branches and pull requests, the work, the timeline */
+.repo-head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+.repo-head h1 { font-family: var(--mono); }
+.repo-head .desc { color: var(--text-2); }
+.repo-head .by { color: var(--text-3); font-size: 12px; margin-left: auto; }
+.bench { display: grid; grid-template-columns: var(--side) minmax(0, 1fr) var(--timeline); gap: var(--s4); align-items: start; }
+.panel { border: 1px solid var(--border); border-radius: 8px; padding: var(--s3); background: var(--bg-raised); }
+.panel + .panel { margin-top: var(--s3); }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { display: flex; align-items: center; gap: var(--s2); padding: 3px 0; font-size: 13px; }
+.side li.sel > a { color: var(--text); font-weight: 600; }
+.side li .who { color: var(--text-3); font-size: 11px; font-family: var(--mono); }
+.side li .n { margin-left: auto; color: var(--text-3); font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+.side form { margin-top: var(--s2); }
+.prs li { display: block; }
+.prs .pr-title { color: var(--text); }
+.prs .pr-meta { color: var(--text-3); font-size: 12px; }
+.prs .pr-meta .st { font-family: var(--mono); }
+.prs .pr-meta .st.merged { color: var(--ok); }
+.prs .pr-meta .st.open { color: var(--warn); }
+.prs .pr-actions { display: flex; gap: var(--s1); margin-top: 3px; }
+.collabs li .addr { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+
+/* The work: the editor, the commit, the running app */
+.work { min-width: 0; }
+.work-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); font-size: 13px; color: var(--text-2); }
+.work-head .branch { font-family: var(--mono); color: var(--text); }
+.work-head .head { font-family: var(--mono); color: var(--text-3); }
+.work-head .dirty { color: var(--warn); }
+.work-head .tools { margin-left: auto; display: flex; gap: var(--s1); }
+.editor {
+  width: 100%;
+  min-height: 320px;
+  padding: var(--s3);
+  border-radius: 8px;
+  font: 12px/1.55 var(--mono);
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+.editor:disabled { opacity: .6; }
+.commit-form { display: flex; gap: var(--s2); margin: var(--s2) 0; align-items: center; flex-wrap: wrap; }
+.commit-form input[type="text"] { flex: 1; min-width: 200px; }
+.commit-form .hint { width: 100%; font-size: 12px; color: var(--text-3); }
+.merge-banner { padding: var(--s2) var(--s3); margin-bottom: var(--s2); border: 1px solid var(--warn); border-radius: 6px; font-size: 13px; color: var(--text); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.preview-head { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 var(--s1); font-size: 12px; color: var(--text-3); }
+.preview-head .what { font-family: var(--mono); color: var(--text-2); }
+.preview { width: 100%; height: 300px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+
+/* The timeline: a graph in the margin, one row per commit, every row a runnable version */
+.timeline { min-width: 0; }
+.graph { display: grid; grid-template-columns: max-content 1fr; }
+.graph svg { display: block; }
+.graph ol { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.graph li { height: var(--row); display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s1); overflow: hidden; white-space: nowrap; cursor: pointer; border-radius: 4px; font-size: 13px; }
+.graph li:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.graph li.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.graph li.head .msg { font-weight: 600; }
+.graph .msg { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.graph .meta { margin-left: auto; color: var(--text-3); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 10px; font: 11px/18px var(--mono); border: 1px solid var(--border-strong); color: var(--text-2); flex-shrink: 0; }
+.chip.mine { border-color: var(--accent); color: var(--accent); }
+.g-line { stroke: var(--border-strong); stroke-width: 1.5; fill: none; }
+.g-dot { fill: var(--bg-raised); stroke: var(--text-3); stroke-width: 1.5; }
+.g-dot.head { stroke: var(--accent); fill: var(--accent); }
+.g-dot.sel { stroke: var(--text); }
+.commit-panel { margin-top: var(--s3); }
+.commit-panel .meta { font-size: 12px; color: var(--text-3); font-family: var(--mono); overflow-wrap: anywhere; }
+.commit-panel .actions { display: flex; gap: var(--s1); flex-wrap: wrap; margin: var(--s2) 0; }
+.diff { margin: 0; max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-sunken); font: 11.5px/1.5 var(--mono); }
+.diff div { padding: 0 var(--s2); white-space: pre; }
+.diff .add { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.diff .del { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.diff .ctx { color: var(--text-2); }
+.diff .more { color: var(--text-3); font-style: italic; }
+.diff-summary { font-size: 12px; color: var(--text-3); margin: var(--s1) 0; font-family: var(--mono); }
+
+@media (max-width: 1100px) {
+  .bench { grid-template-columns: var(--side) minmax(0, 1fr); }
+  .timeline { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .bench { grid-template-columns: 1fr; }
+  .main { padding: var(--s3); }
+  .nav a { margin-right: var(--s2); }
+  .repos li { grid-template-columns: 1fr; }
+  .repos .meta { text-align: left; }
+}
