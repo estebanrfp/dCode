@@ -2,7 +2,7 @@
 
 A shared code editor and a code host in one page, for projects that are **one HTML file** — HTML, CSS and JavaScript together, as on CodePen or JSFiddle — with no server. The editor is [GenosDB](https://github.com/estebanrfp/gdb)'s block editor applied to code: **one node per line**, edited live by everyone on the branch, with named carets. Beside it, behind a divider you can drag, the project runs as you type. Underneath, the history: branches, forks, pull requests, and a timeline where every commit is a signed node its author owns — and a page you can run.
 
-**Live:** [estebanrfp.github.io/dCode](https://estebanrfp.github.io/dCode/) · **Engine:** [GenosDB](https://github.com/estebanrfp/gdb) — if this is interesting, [star the engine ★](https://github.com/estebanrfp/gdb): that is where the work is.
+**Live:** [estebanrfp.github.io/dCode](https://estebanrfp.github.io/dCode/) · **The article:** [A GitHub With No Server](https://genosdb.com/dcode-p2p-collaborative-code-editor-no-server) · **Engine:** [GenosDB](https://github.com/estebanrfp/gdb) — if this is interesting, [star the engine ★](https://github.com/estebanrfp/gdb): that is where the work is.
 
 Plain HTML, CSS and JavaScript. No framework, no build step, no backend. Four files.
 
