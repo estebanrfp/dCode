@@ -18,6 +18,19 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const AUTHORITY = CONSTITUTION.authority
 let me = null, session = {}
 
+// ── Theme: system → light → dark, the guide's toggle (index.html set the first paint) ──
+// `data-pref` is what the reader asked for; `data-theme` is the palette in force, the only thing the CSS reads.
+const THEME_ORDER = ["system", "light", "dark"], systemTheme = matchMedia("(prefers-color-scheme: light)")
+const applyTheme = (pref) => {
+  const root = document.documentElement
+  root.dataset.pref = pref
+  root.dataset.theme = pref === "system" ? (systemTheme.matches ? "light" : "dark") : pref
+  localStorage.theme = pref
+  const b = $("theme-btn"); if (b) b.title = `Theme: ${pref}`
+}
+systemTheme.addEventListener("change", () => { if (document.documentElement.dataset.pref === "system") applyTheme("system") }) // on `system` the OS can change under us
+applyTheme(localStorage.theme ?? "system")
+
 // The shell shows before a byte of the engine arrives; what follows can be
 // slow (a CDN, the relays) or fail, and either must be visible.
 const boot = async (step, fn) => {
@@ -54,7 +67,7 @@ const commitsOf = (repo) => of("commit").filter((n) => n.value.repo === repo).so
 const prsOf = (repo) => of("pr").filter((n) => n.value.repo === repo).sort(byNewest)
 const linesOf = (branch) => of("line").filter((n) => n.value.branch === branch).sort(byOrder)
 const commitOf = (id) => (id && nodes.get(id)?.value.type === "commit" ? nodes.get(id) : null)
-const contentOf = (id) => commitOf(id)?.value.content ?? ""
+const contentOf = (id) => commitOf(id)?.value.content ?? plain.get(id) ?? ""
 /** Every commit reachable from `id`, itself included. */
 const ancestors = (id) => {
   const seen = new Set(), stack = id ? [id] : []
@@ -127,6 +140,55 @@ const merge3 = (base, ours, theirs) => {
 }
 const sha = async (text) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("")
 
+// ── Private repositories: the engine keeps the key, the app seals the code ──
+// A private repository has a vault: one encrypted node (`db.sm.put`) holding
+// its key ring, newest key first. The owner grants `read` on that one node to
+// each member — a key envelope per reader, wrapped and rotated by the engine —
+// and every line and every commit of the repository is sealed with the current
+// key before it is written as an ordinary node. Members open it on arrival;
+// everyone else syncs ciphertext. Revoking a member turns both keys: the
+// vault's, by the engine, and the repository's, a new one on the ring, so
+// what is written afterwards is unreadable to them.
+const keyRings = new Map()  // repo id → CryptoKey[] newest first · null = asked, no envelope · absent = not asked yet
+const unlocking = new Set() // repositories whose vault is being fetched
+const plain = new Map()     // commit id → content, for a sealed commit this session wrote
+const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s) }
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+const newKeyHex = () => [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("")
+const importKey = (hex) => crypto.subtle.importKey("raw", Uint8Array.from(hex.match(/../g), (h) => parseInt(h, 16)), "AES-GCM", false, ["encrypt", "decrypt"])
+const seal = async (repo, text) => {
+  const key = keyRings.get(repo)?.[0]; if (!key) throw new Error("No key for this repository on this device")
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  return `${b64(iv)}.${b64(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text))))}`
+}
+const unseal = async (repo, sealed) => {
+  const [iv, ct] = sealed.split(".").map(unb64)
+  for (const key of keyRings.get(repo) ?? []) { try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct)) } catch {} }
+  return null
+}
+/** Fetch the vault: with an envelope the ring opens; without one the repository stays sealed for this identity. */
+const unlock = async (repoId) => {
+  const repo = nodes.get(repoId); if (!repo?.value.vault || !me || unlocking.has(repoId)) return false
+  unlocking.add(repoId)
+  try {
+    const { result } = await db.sm.get(repo.value.vault).catch(() => ({ result: null }))
+    if (!result?.decrypted || !Array.isArray(result.value.keys)) { keyRings.set(repoId, null); return false }
+    keyRings.set(repoId, await Promise.all(result.value.keys.map(importKey)))
+    await decryptStored(repoId)
+    return true
+  } finally { unlocking.delete(repoId); scheduleRender() }
+}
+/** Open every sealed line and commit of the repository already in the store, then redraw. */
+const decryptStored = async (repoId) => {
+  for (const n of [...nodes.values()]) {
+    if (n.value.repo !== repoId || n.value.ct === undefined) continue
+    const text = await unseal(repoId, n.value.ct)
+    if (text === null) continue
+    if (n.value.type === "line") n.value.text = text; else if (n.value.type === "commit") n.value.content = text
+  }
+  if (current?.repo === repoId) mountBuffer(current.repo, current.branch)
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const abbr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 const DEMO_NAMES = Object.fromEntries(DEMO_IDENTITIES.map((i) => [i.address.toLowerCase(), i.name]))
@@ -184,7 +246,9 @@ const newCommit = async ({ repo, branch, parents, message, content }) => {
   const at = Date.now()
   const id = `${me}:${(await sha([repo, parents.join(","), message, content, at].join("\n"))).slice(0, 40)}`
   await db.sm.executeWithPermission("write")
-  await db.sm.acls.set({ type: "commit", repo, branch, parents, message, content, at }, id)
+  const body = keyRings.get(repo) ? { ct: await seal(repo, content) } : { content } // a private repository's code travels sealed
+  if (body.ct) plain.set(id, content)
+  await db.sm.acls.set({ type: "commit", repo, branch, parents, message, ...body, at }, id)
   return id
 }
 // Fresh keys strictly between two neighbours: the gap is split once into n
@@ -196,11 +260,18 @@ const keysBetween = (prev, next, n = 1) => {
   return Array.from({ length: n }, (_, i) => lo + step * (i + 0.25 + Math.random() * 0.5))
 }
 const keyBetween = (prev, next) => keysBetween(prev, next)[0]
-const putLine = (repo, branch, text, order, id) => db.put({ type: "line", repo, branch, text, order }, id)
+const putLine = async (repo, branch, text, order, id) =>
+  db.put(keyRings.get(repo) ? { type: "line", repo, branch, order, ct: await seal(repo, text) } : { type: "line", repo, branch, text, order }, id)
 /** A branch's buffer, from a file: one node per line, keys 1…n. */
 const seedLines = (repo, branch, content) => Promise.all(content.split("\n").map((text, i) => putLine(repo, branch, text, i + 1)))
-const newRepo = async (name, description, content) => {
+const newRepo = async (name, description, content, isPrivate) => {
   const repo = await create({ type: "repo", name, description })
+  if (isPrivate) { // the vault: one encrypted node with this session's envelope on it, and the first key on the ring
+    const hex = newKeyHex()
+    const vault = await db.sm.put({ type: "vault", repo, keys: [hex] })
+    keyRings.set(repo, [await importKey(hex)])
+    await patch(repo, { vault })
+  }
   const branch = await create({ type: "branch", repo, name: "main", head: null })
   await seedLines(repo, branch, content)
   const head = await newCommit({ repo, branch, parents: [], message: "Initial commit", content })
@@ -496,7 +567,7 @@ const highlight = (li) => { const pre = li?.querySelector(".hl"); if (pre) pre.i
 function mountBuffer(repo, branch) {
   current = { repo, branch }
   buffer().replaceChildren()
-  for (const n of linesOf(branch)) createLine(n.id, n.value)
+  for (const n of linesOf(branch)) if (n.value.text !== undefined) createLine(n.id, n.value) // a sealed line waits for its key
   relayout()
   runPreview(domText(), "the buffer")
   afterChange()
@@ -568,12 +639,21 @@ function announce() {
     liveDirty = false
     if (msg.kind === "caret" && lastSent && lastSent.block === msg.block && lastSent.start === msg.start && lastSent.end === msg.end) return
     lastSent = msg
+    if (msg.kind === "text" && keyRings.get(li.dataset.repo)) { // a private repository's keystrokes travel sealed too
+      const { text, ...rest } = msg
+      seal(li.dataset.repo, text).then((ct) => presenceChannel.send({ ...rest, ct }))
+      return
+    }
     presenceChannel.send(msg)
   })
 }
 document.addEventListener("selectionchange", announce)
-presenceChannel.on("message", (msg, fromPeerId) => {
-  if (msg.kind === "text") { const ta = fieldOf($(msg.block)); if (ta && !isMine(ta) && ta.value !== msg.text) { paint(ta, msg.text); afterChange() } }
+presenceChannel.on("message", async (msg, fromPeerId) => {
+  if (msg.kind === "text") {
+    const li = $(msg.block), ta = fieldOf(li)
+    const text = msg.ct !== undefined ? (ta ? await unseal(li.dataset.repo, msg.ct) : null) : msg.text
+    if (ta && text !== null && !isMine(ta) && ta.value !== text) { paint(ta, text); afterChange() }
+  }
   peerAt.set(fromPeerId, { block: msg.block, start: msg.start, end: msg.end })
   renderMarks()
 })
@@ -587,7 +667,7 @@ setInterval(() => { // after the caret leaves the buffer, "left" is repeated twi
 const reposPage = () => {
   const rows = repos().map((r) => {
     const branches = branchesOf(r.id), commits = commitsOf(r.id)
-    return `<li><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a><span class="meta">${plural(branches.length, "branch")} · ${plural(commits.length, "commit")}${commits[0] ? ` · ${ago(commits[0].value.at)}` : ""}</span><span class="desc">${esc(r.value.description) || "<span class=\"dim\">no description</span>"} <span class="dim">— by ${esc(nameOf(r.value.owner))}</span></span></li>`
+    return `<li><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}<span class="meta">${plural(branches.length, "branch")} · ${plural(commits.length, "commit")}${commits[0] ? ` · ${ago(commits[0].value.at)}` : ""}</span><span class="desc">${esc(r.value.description) || "<span class=\"dim\">no description</span>"} <span class="dim">— by ${esc(nameOf(r.value.owner))}</span></span></li>`
   })
   return `<div class="page"><h1>Repositories</h1><p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone. ${me ? `<a href="#/new">Create one</a>.` : `<a href="#/login">Sign in</a> to create one.`}</p>
 ${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}</div>`
@@ -596,6 +676,7 @@ const newPage = () => (me
   ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
 <form id="new-form" class="formtable"><label for="nf-name">name</label><input id="nf-name" type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" placeholder="my-project">
 <label for="nf-desc">description</label><input id="nf-desc" type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line">
+<label class="check"><input type="checkbox" name="private" id="nf-private"> Private — the code is sealed with a key only the members you grant can hold; the name, the branches and the pull request titles stay visible</label>
 <div class="actions"><button type="submit" class="primary">Create repository and open the editor</button></div>
 <p class="note">The first commit will be signed by ${esc(nameOf(me))} (${esc(me)}). Nobody else can move <code>main</code> until you grant them write.</p></form></div>`
   : `<div class="page"><h1>New repository</h1><p class="lede"><a href="#/login">Sign in</a> to create a repository.</p></div>`)
@@ -610,6 +691,29 @@ ${!onboarding ? `<p class="note demo">Demo identities, one click, so two windows
 <p class="note">There is no account and no server: an identity is a key pair on this device. A mnemonic recovers it anywhere; a passkey keeps the session on this browser. Every commit you make is signed with it.</p>
 <p class="note status" id="login-status"></p></div></div>`
 }
+// The identity view: the session pill opens it. Protecting an identity with a
+// passkey is offered here, not only at onboarding — a session opened with a
+// phrase still holds its key in memory, and the engine can wrap it any time.
+const sessionPage = () => {
+  if (!me) return `<div class="page session-page"><h1>Your identity</h1><p class="lede">No session on this device. <a href="#/login">Sign in</a>.</p></div>`
+  const s = session, canProtect = PASSKEYS_AVAILABLE && !s.isWebAuthnProtected && s.hasVolatileIdentity
+  const yn = (v) => `<span class="${v ? "yes" : "no"}">${v ? "yes" : "no"}</span>`
+  return `<div class="page session-page"><h1>Your identity</h1>
+<p class="lede">A key pair on this device. Every commit you make is signed with it. A mnemonic recovers it anywhere; a passkey keeps the session on this browser and never types the phrase again.</p>
+<table class="facts">
+<tr><td>name</td><td>${esc(nameOf(me))}</td></tr>
+<tr><td>address</td><td><code id="my-address">${esc(me)}</code> <button class="small" data-act="copy-address">Copy</button></td></tr>
+<tr><td>role</td><td>${eqAddr(me, AUTHORITY) ? "superadmin" : "guest"}</td></tr>
+<tr><td>unlocked by</td><td id="unlocked-by">${s.isWebAuthnProtected ? "passkey" : "mnemonic"}</td></tr>
+<tr><td>protected by a passkey</td><td>${yn(s.isWebAuthnProtected)}</td></tr>
+<tr><td>passkey on this browser</td><td>${yn(s.hasWebAuthnHardwareRegistration)}</td></tr>
+</table>
+<div class="actions">${canProtect ? `<button class="primary" id="passkey-protect-btn">Protect this identity with a passkey</button>` : ""}<button id="logout-btn">Sign out</button></div>
+<p class="note">${!PASSKEYS_AVAILABLE ? "Passkeys need HTTPS or localhost — an IP address is never a valid Relying Party ID." : s.isWebAuthnProtected ? "Sign out and back in with the passkey: the phrase is never typed again." : s.hasVolatileIdentity ? "Until a passkey holds it, the phrase is the only way to open this identity again — here or anywhere." : "This session was opened by a passkey."}</p>
+<p class="note status" id="login-status"></p></div>`
+}
+const lockedPage = (repo, opening) => `<div class="page locked"><h1>${esc(repo.value.name)} <span class="lock">private</span></h1><p class="lede">${esc(repo.value.description)}</p>
+<p class="lede">${opening ? "Opening the vault…" : me ? `This repository is private: its code is sealed with a key only its members hold, and ${esc(nameOf(repo.value.owner))} has not granted this identity one. Ask for access — a grant reaches this page on its own.` : `This repository is private: its code is sealed with a key only its members hold. <a href="#/login">Sign in</a> — if you are a member, it opens.`}</p></div>`
 const constitutionPage = () => `<div class="page constitution">
 <h1>Constitution</h1><p class="lede">This page is <code>constitution.js</code>, rendered. The rules you read are the rules that run — on every peer, with nobody in between.</p>
 <h2>The authority</h2><p><code>${esc(AUTHORITY)}</code> — its only power is restricting an identity, with its signature. It cannot touch a repository, a branch or a commit it does not own: every one is owned by its author, and the engine refuses anyone else's edit or deletion, the authority included.</p>
@@ -623,7 +727,7 @@ ${me ? `<h2>You, under it</h2><p>${esc(nameOf(me))} · <code>${esc(me)}</code> �
 // regions are redrawn from the store.
 const repoSkeleton = (repo) => `<section class="repo">
 <div class="repo-bar">
-  <a class="repo-name" id="repo-name" href="#/r/${esc(repo.id)}" title="${esc(repo.value.description)}">${esc(repo.value.name)}</a>
+  <a class="repo-name" id="repo-name" href="#/r/${esc(repo.id)}" title="${esc(repo.value.description)}">${esc(repo.value.name)}</a><span id="repo-lock" class="lock hidden" title="Private: the code is sealed for its members">private</span>
   <button type="button" class="small hidden" id="edit-repo" data-act="edit-repo" title="Rename or describe the repository — a write on a node you own">Edit</button>
   <select id="branch-select" aria-label="Branch"></select>
   <span class="head" id="head-label"></span><span class="dirty hidden" id="dirty">· uncommitted changes</span>
@@ -642,7 +746,7 @@ const repoSkeleton = (repo) => `<section class="repo">
       <nav class="tabs" aria-label="Repository"><button type="button" data-tab="history">History</button><button type="button" data-tab="pulls">Pull requests</button><button type="button" data-tab="branches">Branches</button></nav>
       <div class="tab" id="tab-history"><div class="graph"><svg id="graph" aria-hidden="true"></svg><ol id="commits"></ol></div><div id="commit-panel" class="commit-panel"></div></div>
       <div class="tab" id="tab-pulls"><ul id="prs" class="prs"></ul><div id="pr-form-box"></div></div>
-      <div class="tab" id="tab-branches"><ul id="branches"></ul><div id="branch-form-box"></div><h2 id="collabs-title">Collaborators</h2><ul id="collabs" class="collabs"></ul><div id="collab-form-box"></div></div>
+      <div class="tab" id="tab-branches"><ul id="branches"></ul><div id="branch-form-box"></div><h2 id="collabs-title">Collaborators</h2><ul id="collabs" class="collabs"></ul><div id="collab-form-box"></div><h2 id="members-title" class="hidden">Members</h2><ul id="members" class="members hidden"></ul><div id="member-form-box"></div></div>
     </div>
   </section>
 </div></section>`
@@ -689,10 +793,25 @@ const renderCollabs = (repo, branch) => {
   $("collabs").innerHTML = entries.map(([addr, level]) => `<li><span class="addr" title="${esc(addr)}">${esc(nameOf(addr))}</span><span class="n">${esc(level)}</span>${mine ? `<button class="small" data-act="revoke" data-address="${esc(addr)}">Revoke</button>` : ""}</li>`).join("") || `<li class="dim">${mine ? "nobody else can move this head" : "only its owner moves this head"}</li>`
   $("collab-form-box").innerHTML = mine ? `<form id="collab-form" class="row"><input type="text" name="address" class="mono" placeholder="0x… address" pattern="0x[0-9a-fA-F]{40}" required autocomplete="off"><button type="submit" class="small">Grant write</button></form>` : ""
 }
+// A private repository's members: the addresses holding an envelope on its
+// vault. The owner grants and revokes them there; a revocation turns the key.
+const renderMembers = async (repo) => {
+  const list = $("members"); if (!list) return
+  const vault = repo.value.vault
+  $("members-title").classList.toggle("hidden", !vault); list.classList.toggle("hidden", !vault); $("member-form-box").innerHTML = ""
+  if (!vault) return
+  const perms = await db.sm.acls.getPermissions(vault).catch(() => null)
+  if (!$("members") || $("main").dataset.repo !== repo.id) return // navigated away while reading
+  const mine = eqAddr(repo.value.owner, me)
+  const rows = [[perms?.owner ?? repo.value.owner, "owner"], ...Object.keys(perms?.collaborators ?? {}).map((a) => [a, "read"])]
+  $("members").innerHTML = rows.map(([addr, level]) => `<li data-member="${esc(addr)}"><span class="addr" title="${esc(addr)}">${esc(nameOf(addr))}</span><span class="n">${esc(level)}</span>${mine && level !== "owner" ? `<button class="small" data-act="revoke-member" data-address="${esc(addr)}">Revoke</button>` : ""}</li>`).join("")
+  $("member-form-box").innerHTML = mine ? `<form id="member-form" class="row"><input type="text" name="address" class="mono" placeholder="0x… address — must have signed in once" pattern="0x[0-9a-fA-F]{40}" required autocomplete="off"><button type="submit" class="small">Grant read</button></form><p class="dim">A member holds a key envelope on the repository's vault. Revoking one turns the key: what is written afterwards stays unreadable to them.</p>` : ""
+}
 function renderRepoBar() {
   const branch = currentBranch(); if (!branch || !$("head-label")) return
   const repo = nodes.get(branch.value.repo), dirty = domText() !== contentOf(branch.value.head), writable = canWriteBranch(branch), merging = pendingMerge.get(branch.id)
   $("repo-name").textContent = repo.value.name; $("repo-name").title = repo.value.description
+  $("repo-lock").classList.toggle("hidden", !repo.value.vault)
   $("edit-repo").classList.toggle("hidden", !eqAddr(repo.value.owner, me))
   $("head-label").textContent = `@ ${short(branch.value.head)}`
   $("dirty").classList.toggle("hidden", !dirty)
@@ -759,13 +878,20 @@ const render = () => {
   renderNav(r.page); renderSession()
   if (r.page === "r" && r.repo) return renderRepo(r, main)
   main.dataset.repo = ""; main.classList.remove("full"); current = null
-  const titles = { "": "dCode", new: "New repository · dCode", login: "Sign in · dCode", constitution: "Constitution · dCode" }
-  main.innerHTML = { "": reposPage, new: newPage, login: loginPage, constitution: constitutionPage }[r.page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  const titles = { "": "dCode", new: "New repository · dCode", login: "Sign in · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
+  main.innerHTML = { "": reposPage, new: newPage, login: loginPage, session: sessionPage, constitution: constitutionPage }[r.page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
   document.title = titles[r.page] ?? "dCode"
 }
 const renderRepo = (r, main) => {
   const repo = nodes.get(r.repo)
   if (!repo) { main.dataset.repo = ""; main.classList.remove("full"); current = null; main.innerHTML = `<div class="page"><p class="muted">No such repository here yet. If it exists in this room, it will appear when it syncs.</p></div>`; return }
+  if (repo.value.vault && !Array.isArray(keyRings.get(repo.id))) { // private: without the key there is nothing to show but the door
+    if (!keyRings.has(repo.id) && me) unlock(repo.id)
+    main.dataset.repo = ""; main.classList.remove("full"); current = null
+    main.innerHTML = lockedPage(repo, unlocking.has(repo.id))
+    document.title = `${repo.value.name} · dCode`
+    return
+  }
   const branches = branchesOf(repo.id), commits = commitsOf(repo.id), prs = prsOf(repo.id)
   const branch = branches.find((b) => b.id === r.branch) ?? defaultBranch(repo, branches)
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
@@ -774,6 +900,7 @@ const renderRepo = (r, main) => {
   renderBranches(repo, branches, branch, commits, selected)
   renderPRs(repo, branches, branch, prs)
   renderCollabs(repo, branch)
+  renderMembers(repo)
   renderRepoBar()
   renderTimeline(repo, branches, commits, selected)
   renderCommitPanel(repo, branch, selected)
@@ -783,7 +910,7 @@ const renderNav = (page) => {
   $("nav").innerHTML = [["", "repositories"], ["new", "new"], ["constitution", "constitution"]].map(([p, label]) => `<a href="#/${p}" data-nav="${p}"${page === p ? ' class="sel"' : ""}>${label}</a>`).join("")
 }
 const renderSession = () => {
-  $("session").innerHTML = me ? `<span class="who" title="${esc(me)}">${esc(nameOf(me))}</span> · <a href="#" id="logout">sign out</a>` : `<a href="#/login">sign in</a>`
+  $("session").innerHTML = me ? `<a href="#/session" class="who" title="${esc(me)} — your identity">${esc(nameOf(me))}</a> · <a href="#" id="logout">sign out</a>` : `<a href="#/login">sign in</a>`
 }
 
 // ── The divider between the panels is the resize control ───────────────────
@@ -819,6 +946,18 @@ document.addEventListener("click", async (e) => {
   try {
     if (a.dataset.tab) { showTab(a.dataset.tab); return }
     if (a.dataset.view) { showView(a.dataset.view); return }
+    if (a.id === "theme-btn") { applyTheme(THEME_ORDER[(THEME_ORDER.indexOf(document.documentElement.dataset.pref) + 1) % THEME_ORDER.length]); return }
+    if (a.id === "logout-btn") return db.sm.clearSecurity()
+    if (act === "copy-address") { try { await navigator.clipboard.writeText(me); say("login-status", "Address copied.") } catch { say("login-status", "Clipboard unavailable — select the address and copy it.") } return }
+    if (act === "revoke-member") {
+      const repo = nodes.get(route().repo); if (!repo?.value.vault) return
+      await db.sm.acls.revoke(repo.value.vault, a.dataset.address)              // the engine turns the vault's envelope key
+      const { result } = await db.sm.get(repo.value.vault), hex = newKeyHex()   // and the repository key turns: a new one on the ring
+      await db.sm.put({ ...result.value, keys: [hex, ...result.value.keys] }, repo.value.vault)
+      keyRings.set(repo.id, [await importKey(hex), ...(keyRings.get(repo.id) ?? [])])
+      notice(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`)
+      renderMembers(repo); return
+    }
     if (act === "edit-repo") {
       const repo = nodes.get(route().repo), f = $("repo-form"); if (!repo || !f) return
       f.elements.name.value = repo.value.name; f.elements.description.value = repo.value.description ?? ""
@@ -856,11 +995,16 @@ document.addEventListener("submit", async (e) => {
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
     if (f.id === "new-form") {
-      const { repo, branch } = await newRepo(field("name"), field("description"), TEMPLATE)
+      const { repo, branch } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
       location.hash = `#/r/${repo}/${branch}`; return
     }
     const branch = currentBranch(); if (!branch) return
     const repo = nodes.get(branch.value.repo)
+    if (f.id === "member-form") { // an envelope on the vault: the engine wraps the key for an address that has signed in once
+      const address = field("address")
+      await db.sm.acls.grant(repo.value.vault, address, "read")
+      f.reset(); notice(`${nameOf(address)} holds the key now; their page opens on its own.`); renderMembers(repo); return
+    }
     if (f.id === "repo-form") { // the repository node is the owner's: a rename is one write on it
       await patch(repo.id, { name: field("name"), description: field("description") })
       f.classList.add("hidden"); notice("Repository updated."); scheduleRender(); return
@@ -905,24 +1049,49 @@ document.addEventListener("focusout", () => { if (dirtyWhileTyping) { dirtyWhile
 addEventListener("hashchange", () => { if (!document.activeElement?.closest(".line")) document.activeElement?.blur(); render() })
 
 // ── Session: the callback is the single source of truth ─────────────────────
+let lastMe = null
 db.sm.setSecurityStateChangeCallback((state) => {
   session = state
   me = state.isActive ? state.activeAddress : null
-  if (state.isActive && route().page === "login") { location.hash = sessionStorage.dcodeGoto ?? "#/"; sessionStorage.removeItem("dcodeGoto") }
+  if (me !== lastMe) { keyRings.clear(); lastMe = me } // a key ring belongs to a session: the next look at a private repository asks the vault again
+  if (state.isActive && route().page === "login") { location.hash = sessionStorage.dcodeGoto ?? "#/session"; sessionStorage.removeItem("dcodeGoto") }
   $("main").dataset.repo = "" // what you may do on the page depends on who you are: rebuild it
   render()
 })
 
 // ── The subscription: after everything it may call, for a returning device ──
-await db.map({ query: { type: { $in: ["repo", "branch", "commit", "pr", "line"] } } }, ({ id, value, timestamp, action }) => {
+// Vault nodes travel as the engine's sealed wrappers: they are not stored here,
+// they only tell whoever is looking at that repository to ask the vault again.
+const chains = new Map() // per node: sealed values open in arrival order
+const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).then(fn, fn); chains.set(id, p); return p }
+await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line"] } }, { _gdbWrapperType: { $exists: true } }] } }, ({ id, value: stored, timestamp, action }) => {
+  const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
+  if (value?._gdbWrapperType) {
+    const vault = id.replace(/^SM_ID_PREFIX_/, ""), repo = of("repo").find((r) => r.value.vault === vault)
+    if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); unlock(repo.id) }
+    return
+  }
   const known = nodes.get(id)
   if (action === "removed") nodes.delete(id); else nodes.set(id, { id, value, timestamp })
   const line = value?.type === "line" ? value : known?.value.type === "line" ? known.value : null
-  if (line) { // the buffer follows its branch's lines directly; nothing else redraws for a keystroke
+  const dispatchLine = () => {
     if (!current || line.branch !== current.branch || !buffer()) return
     if (action === "removed") { const li = $(id); if (li) dropLine(li) }
     else if ($(id)) updateLine(id, value); else createLine(id, value)
+  }
+  if (line) { // the buffer follows its branch's lines directly; nothing else redraws for a keystroke
+    if (action !== "removed" && value.ct !== undefined) inOrder(id, async () => { // sealed: open it first
+      const text = await unseal(value.repo, value.ct)
+      if (text === null) { if (!keyRings.has(value.repo) && me) unlock(value.repo); return }
+      value.text = text; dispatchLine()
+    })
+    else dispatchLine()
     return
+  }
+  if (action !== "removed" && value.type === "commit" && value.ct !== undefined && value.content === undefined) {
+    const cached = plain.get(id)
+    if (cached !== undefined) value.content = cached
+    else inOrder(id, async () => { const text = await unseal(value.repo, value.ct); if (text !== null) { value.content = text; scheduleRender() } })
   }
   scheduleRender()
 })

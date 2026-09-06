@@ -82,6 +82,7 @@ export const CONSTITUTION = {
     ["A fork is yours", "A fork is a branch you own in someone else's repository, pointing at any commit. Nobody can move it but you."],
     ["A pull request is a proposal", "It is a node its proposer owns. The target's owner merges by writing a merge commit and moving their own head; whether the proposal is merged is read from the graph by every peer, not written by anyone."],
     ["Offline is normal", "A commit made with no peer in sight is a commit. It reaches the others when a path exists, signed, and lands only if the rules above allow it."],
+    ["A private repository is sealed", "Its code is ciphertext to anyone but its members. The key lives in a vault the engine encrypts per reader; the owner grants and revokes membership there, and a revocation turns the key. The name, the branches, the messages and the proposals stay readable — the code does not, not even to the authority."],
   ],
 
   /** How this file changes. */

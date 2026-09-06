@@ -18,6 +18,7 @@ Plain HTML, CSS and JavaScript. No framework, no build step, no backend. Four fi
 | A pull request's state is a column | Whether a proposal is merged is read from the graph by every peer: the proposed commit is an ancestor of the target's head, or it is not |
 | History is browsed | History **runs**: a project is one HTML file, so any commit opens in a sandboxed frame as it was |
 | Offline is an error | A commit made with no peer in sight waits on this device's disk and lands when a path exists, signed like any other |
+| A private repository is a server setting | A private repository has a vault: one encrypted node holding its key, with an envelope per member that the owner grants and revokes. Every line and every commit is ciphertext to anyone else — on the wire, at rest, and to the authority itself |
 
 ## The model
 
@@ -32,6 +33,8 @@ Two layers, one graph.
 - **commit** — the whole file, a message, its parents and the branch it was made on. Its id is `<author>:<sha-256 of repo, parents, message, content, time>`.
 - **pull request** — a proposal from one branch into another, with the commit it proposes. The proposer updates or withdraws it; the target's owner merges it — a fast-forward when the target's head is an ancestor of the proposal, a merge commit with two parents otherwise, made by a line-based three-way merge. The target's buffer follows the merge; conflicts land in it with the usual markers, and the commit made from the resolution is the merge.
 
+**A private repository is sealed.** Tick *Private* when creating one and the owner's session mints a key and keeps it in a **vault** — one encrypted node written with `db.sm.put`, whose per-reader key envelopes the engine manages. From then on every line and every commit of that repository leaves the device as ciphertext (AES-GCM, sealed with the current key before the node is written), the live keystrokes on the channel included; only the name, the description, the branch names, the commit messages and the pull request titles stay readable. A **member** is an address the owner grants `read` on the vault, in the Branches tab: the engine wraps the key for them and their page opens on its own. Revoking one turns two keys at once — the engine rotates the vault's, the app adds a new one to the repository's ring — so what is written afterwards never opens for them. Nobody else holds anything but ciphertext, at rest included: a member's browser opens the code in memory and never writes it back to disk in clear, and the constitution's authority sees the same locked door as a stranger.
+
 ## The constitution
 
 [`constitution.js`](constitution.js) is rendered verbatim on the site's **constitution** page. Writing is free from the first second — on an owned node a write or a deletion is only ever the owner's, and `delete` is what lets a shared buffer lose a line — so there is no ladder to climb and no authority to wait for. The authority's only power is to restrict an identity, with its signature; it cannot touch a repository, a branch or a commit it does not own.
@@ -45,7 +48,8 @@ Two layers, one graph.
 - **Ids that carry their author.** A node whose id begins with an address can only be created by that address, on a peer that never saw it — which is what lets a commit name itself by its content.
 - **Collaborators as data.** `grant` and `revoke` on the branch node, honoured by every receiver; no server decides who may push.
 - **Derived state from one subscription.** One `db.map` feeds a store; the buffer, the branches, the timeline, the diff and every pull request's state are pure functions of it.
-- **Identity with no server.** Mnemonic recovery, passkey sessions, and demo identities so two windows can meet in one click.
+- **Encryption with keys the engine keeps.** `db.sm.put` stores the vault encrypted with a key wrapped per reader; `grant` and `revoke` on it add and remove envelopes and rotate the key. The app seals the code with one symmetric key it keeps there — no key server, no secret typed anywhere.
+- **Identity with no server.** Mnemonic recovery, passkey sessions — a session opened with a phrase takes a passkey later, from the identity view behind the session pill — and demo identities so two windows can meet in one click. The theme follows the [design guide](https://github.com/estebanrfp/gdb/blob/main/docs/genosdb-design-guide.md): system, light or dark, one button, tokens only.
 
 ## Run it
 
@@ -66,12 +70,14 @@ pnpm install
 pnpm test
 ```
 
-Playwright, one `BrowserContext` per simulated visitor (own storage, own identity), a fresh room per test, real WebRTC between them. Seven tests in four files:
+Playwright, one `BrowserContext` per simulated visitor (own storage, own identity), a fresh room per test, real WebRTC between them. Ten tests in six files:
 
 - `tests/repo.spec.js` — a repository and its buffer crossing to another visitor line for line, an edit landing live, the commit under the same ids, the head and an older version running in the frame, the diff, the download of the buffer and of an older version, the owner renaming the repository in place; the views as filters over one file — CSS the `<style>` block, JS the `<script>` block, with the file's line numbers — an edit in a view landing as the same node, the code coloured; the buffer as the block editor: two people on two lines at once, Enter splitting a node and Backspace merging it back on both peers, Discard returning everyone to the head.
 - `tests/branches.spec.js` — a fork with a copy of the buffer, a pull request, a proposal brought up to date and a fast-forward merge that the target's buffer follows; a tampered client that writes another's branch head and is refused by every receiver, proved against a later write that lands; a collaborator granted `write` who moves the head directly, and is back to forking once revoked.
 - `tests/merge.spec.js` — divergent edits on different lines merged into one commit with two parents; the same line changed both ways, the conflict markers landing in the shared buffer on both screens, the refusal to commit them, and the merge commit made from the resolution pasted over the whole buffer.
 - `tests/sync.spec.js` — a repository and a commit made with no peer in sight, read back from this device's disk with its buffer and delivered once it is back.
+- `tests/private.spec.js` — a private repository: the authority itself meets the locked door and holds only ciphertext on its disk, a grant opens Bob's page on its own, a member's sealed lines reach the other member in clear and nobody else, a revocation closes his page and seals what comes after with a new key, and the owner reads everything back after a reload — with no plaintext ever written to any disk, hers included.
+- `tests/session.spec.js` — the identity view: a session opened with a phrase protected with a passkey there (Playwright's virtual authenticator), resumed silently after a reload and reopened with the passkey; the theme toggle cycling system → light → dark, kept across a reload and following the OS on `system`.
 
 Signalling goes through the public relays; set `DCODE_RELAY=ws://…` to use a local one, which makes discovery immediate.
 

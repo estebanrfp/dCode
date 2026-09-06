@@ -110,10 +110,11 @@ export const replaceAll = async (v, text) => {
 }
 
 /** Create a repository through the form; returns its id and its main branch's id from the URL. */
-export const createRepo = async (v, name, description = "") => {
+export const createRepo = async (v, name, description = "", { isPrivate = false } = {}) => {
   await go(v, "#/new")
   await v.page.locator('#new-form [name="name"]').fill(name)
   await v.page.locator('#new-form [name="description"]').fill(description)
+  if (isPrivate) await v.page.locator("#nf-private").check()
   await v.page.locator('#new-form button[type="submit"]').click()
   await expect(v.page).toHaveURL(/#\/r\//)
   await expect(rows(v.page)).toHaveCount(1)
@@ -134,10 +135,17 @@ export const commit = async (v, message) => {
  * survives a reload. The file is MessagePack behind zlib deflate; a read that
  * catches the worker mid-write fails to inflate and the poll simply retries.
  */
-export const persisted = (v, text) => expect.poll(() => v.page.evaluate(async ([name, text]) => {
+export const inStore = (v, text) => v.page.evaluate(async ([name, text]) => {
   const root = await navigator.storage.getDirectory()
   const file = await root.getFileHandle(name).then((h) => h.getFile()).catch(() => null)
   if (!file) return false
   const bytes = await new Response(file.stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer().catch(() => null)
   return !!bytes && new TextDecoder("latin1").decode(bytes).includes(text)
-}, [`${v.room}_graph.msgpack`, text]), { timeout: 30_000 }).toBe(true)
+}, [`${v.room}_graph.msgpack`, text])
+export const persisted = (v, text) => expect.poll(() => inStore(v, text), { timeout: 30_000 }).toBe(true)
+/** A passkey for this page: Playwright's virtual authenticator, headless and in CI. */
+export const virtualAuthenticator = async (v) => {
+  const cdp = await v.context.newCDPSession(v.page)
+  await cdp.send("WebAuthn.enable")
+  await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true } })
+}
