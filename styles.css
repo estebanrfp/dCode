@@ -117,7 +117,6 @@ form.row input[type="text"] { flex: 1; min-width: 120px; }
 .formtable { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s3); align-items: start; max-width: 760px; margin-top: var(--s3); }
 .formtable label { padding-top: 6px; color: var(--text-2); font-size: 13px; }
 .formtable input[type="text"], .formtable textarea { width: 100%; }
-.formtable textarea.code { font: 12px/1.5 var(--mono); min-height: 260px; white-space: pre; }
 .formtable .actions { grid-column: 2; display: flex; gap: var(--s2); flex-wrap: wrap; }
 .formtable .note { grid-column: 2; font-size: 12px; color: var(--text-3); }
 .formtable .danger { color: var(--danger); }

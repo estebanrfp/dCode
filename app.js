@@ -539,11 +539,10 @@ const reposPage = () => {
 ${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}</div>`
 }
 const newPage = () => (me
-  ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. Its <code>main</code> branch, its shared buffer and the first commit are created with it, and the commit is the whole project — one HTML file.</p>
+  ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
 <form id="new-form" class="formtable"><label for="nf-name">name</label><input id="nf-name" type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" placeholder="my-project">
 <label for="nf-desc">description</label><input id="nf-desc" type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line">
-<label for="nf-content">index.html</label><textarea id="nf-content" name="content" class="code" spellcheck="false">${esc(TEMPLATE)}</textarea>
-<div class="actions"><button type="submit" class="primary">Create repository</button></div>
+<div class="actions"><button type="submit" class="primary">Create repository and open the editor</button></div>
 <p class="note">The first commit will be signed by ${esc(nameOf(me))} (${esc(me)}). Nobody else can move <code>main</code> until you grant them write.</p></form></div>`
   : `<div class="page"><h1>New repository</h1><p class="lede"><a href="#/login">Sign in</a> to create a repository.</p></div>`)
 const loginPage = () => {
@@ -781,7 +780,7 @@ document.addEventListener("submit", async (e) => {
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
     if (f.id === "new-form") {
-      const { repo, branch } = await newRepo(field("name"), field("description"), new FormData(f).get("content").toString().replace(/\r/g, ""))
+      const { repo, branch } = await newRepo(field("name"), field("description"), TEMPLATE)
       location.hash = `#/r/${repo}/${branch}`; return
     }
     const branch = currentBranch(); if (!branch) return
