@@ -12,6 +12,8 @@ export const ADDR = {
   alice: "0x3546D4BA0ac3bfDea3F1511F82a078DDdb3F4931",
   bob: "0x8089C0480139d85D82c1E20eeF08a77EF8cD7DEC",
 }
+/** Lines in the template a new repository starts from (a trailing newline makes the last one empty). */
+export const TEMPLATE_LINES = 23
 export const freshRoom = (label) => `dcode-test-${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 export const url = (room, hash = "#/", relay = RELAY) => `${BASE}/?room=${room}${relay ? `&relay=${relay}` : ""}${hash}`
 /** A relay nobody listens on: a visitor pointed here is alone in the room. */
@@ -72,10 +74,40 @@ export const rows = (page) => page.locator("#commits li[data-commit]")
 export const commitIds = (page) => rows(page).evaluateAll((els) => els.map((el) => el.dataset.commit))
 export const branchRows = (page) => page.locator("#branches li[data-branch]")
 export const prRows = (page) => page.locator("#prs li[data-pr]")
-export const head = (page) => page.locator("#work-head .head")
-export const editor = (page) => page.locator("#editor")
+export const head = (page) => page.locator("#head-label")
 export const preview = (page) => page.frameLocator("#preview").locator("body")
 export const short = (id) => id.split(":").pop().slice(0, 7)
+/** The dock shows one tab at a time; a form or a button in another one needs it brought up first. */
+export const tab = (v, name) => v.page.locator(`.tabs [data-tab="${name}"]`).click()
+
+// ── The buffer ──────────────────────────────────────────────────────────────
+export const lines = (page) => page.locator("#buffer .line")
+export const lineIndex = (page, text) => lines(page).locator("textarea").evaluateAll((els, t) => els.findIndex((e) => e.value.includes(t)), text)
+export const seesLine = (v, text) => expect.poll(() => lineIndex(v.page, text), { timeout: 60_000 }).toBeGreaterThanOrEqual(0)
+export const lineWith = async (page, text) => {
+  const i = await lineIndex(page, text)
+  if (i < 0) throw new Error(`no line holding ${JSON.stringify(text)}`)
+  return lines(page).nth(i).locator("textarea")
+}
+/** Rewrite the line holding `match` through the editor, as a person would: click it, replace its text. */
+export const setLine = async (v, match, text) => {
+  await seesLine(v, match)
+  const ta = await lineWith(v.page, match)
+  await ta.click()
+  await ta.fill(text)
+}
+export const bufferText = (page) => lines(page).locator("textarea").evaluateAll((els) => els.map((e) => e.value).join("\n"))
+/** Ctrl/Cmd+A twice selects the whole buffer; a paste then replaces it in one gesture. */
+export const replaceAll = async (v, text) => {
+  await lines(v.page).first().locator("textarea").click()
+  await v.page.keyboard.press("ControlOrMeta+a")
+  await v.page.keyboard.press("ControlOrMeta+a")
+  await expect(v.page.locator("#buffer")).toHaveClass(/all-selected/)
+  await v.page.evaluate((t) => {
+    const clipboardData = new DataTransfer(); clipboardData.setData("text/plain", t)
+    document.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+  }, text)
+}
 
 /** Create a repository through the form; returns its id and its main branch's id from the URL. */
 export const createRepo = async (v, name, description = "") => {
@@ -85,13 +117,12 @@ export const createRepo = async (v, name, description = "") => {
   await v.page.locator('#new-form button[type="submit"]').click()
   await expect(v.page).toHaveURL(/#\/r\//)
   await expect(rows(v.page)).toHaveCount(1)
+  await expect(lines(v.page)).toHaveCount(TEMPLATE_LINES)
   const [repo, branch] = decodeURIComponent(v.page.url().split("#/r/")[1]).split("/")
   return { repo, branch }
 }
-/** Edit the working copy and commit it; resolves with the new head's short id from the notice. */
-export const commit = async (v, message, transform) => {
-  const ed = editor(v.page)
-  await ed.fill(transform(await ed.inputValue()))
+/** Commit the buffer; resolves with the new head's short id from the notice. */
+export const commit = async (v, message) => {
   await v.page.locator("#message").fill(message)
   await v.page.locator("#commit-btn").click()
   await expect(v.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7})/)

@@ -56,15 +56,16 @@ export const CONSTITUTION = {
   /**
    * What each role may do. Enforced by the engine on every peer. Writing is
    * free from the first second — as on any code host, you sign up and you
-   * push — because a write can only ever create or change a node you own.
+   * push — because on an owned node a write or a deletion is only ever the
+   * owner's; `delete` here is what lets a shared buffer lose a line.
    */
   roles: {
-    guest:      { can: ["read", "sync", "write", "link"] },
+    guest:      { can: ["read", "sync", "write", "link", "delete"] },
     restricted: { can: ["read", "sync"] },
     superadmin: { can: ["assignRole"], inherits: ["guest"] },
   },
   roleText: {
-    guest: "Everyone, from the first second: reads everything and writes nodes of its own — repositories, branches, commits, pull requests — and nothing else. There is no ladder to climb.",
+    guest: "Everyone, from the first second: reads everything, writes nodes of its own — repositories, branches, commits, pull requests — and edits or removes the lines of any shared buffer. Nothing owned by someone else. There is no ladder to climb.",
     restricted: "Lost the right to write. Reads and syncs like anyone; its repositories, branches and commits stay exactly where they are, signed by it.",
     superadmin: "The authority. Its only power is to restrict an identity, with its signature. It cannot touch a repository, a branch or a commit it does not own.",
   },
@@ -74,6 +75,7 @@ export const CONSTITUTION = {
 
   /** What ownership means here — the engine's rule, read as a code host. */
   principles: [
+    ["The buffer is shared", "Every line of a branch's code is a plain node: anyone on the branch rewrites it, splits it, moves it or removes it, live, with their caret in view — the block editor, for code. What is protected is not the draft but the history."],
     ["A commit is immutable", "Its id begins with its author's address and ends with a hash of its content, parents, message and time. No other identity can create a node under that id, and the author cannot rewrite it without changing the id."],
     ["A branch is protected", "Only its owner and the addresses granted `write` on it can move its head. Anyone else's write is refused on every peer — there is no server to ask, and none to compromise."],
     ["Two pushes at once", "If two writers move the same head at the same moment, the hybrid logical clock keeps one; the other commit stays in the graph, behind, and merges like any other. The same outcome as a rejected non-fast-forward push, without the error."],
