@@ -464,6 +464,14 @@ function afterChange() {
   previewTimer = setTimeout(() => { if ($("autorun")?.checked && current) { const text = domText(); if (text !== lastRun) runPreview(text, "the buffer") } }, 600)
 }
 const runPreview = (html, what) => { lastRun = html; $("preview").srcdoc = html; $("preview-what").textContent = what }
+// The project is one file, so it leaves as one file: the buffer, or any commit, as .html.
+const download = (html, name) => {
+  const a = document.createElement("a")
+  a.href = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+const fileName = (repo, suffix = "") => `${repo?.value.name ?? "index"}${suffix}.html`
 
 // ── Whole-buffer selection: Ctrl/Cmd+A twice ────────────────────────────────
 let allSelected = false
@@ -569,18 +577,20 @@ ${me ? `<h2>You, under it</h2><p>${esc(nameOf(me))} · <code>${esc(me)}</code> �
 // regions are redrawn from the store.
 const repoSkeleton = (repo) => `<section class="repo">
 <div class="repo-bar">
-  <a class="repo-name" href="#/r/${esc(repo.id)}" title="${esc(repo.value.description)}">${esc(repo.value.name)}</a>
+  <a class="repo-name" id="repo-name" href="#/r/${esc(repo.id)}" title="${esc(repo.value.description)}">${esc(repo.value.name)}</a>
+  <button type="button" class="small hidden" id="edit-repo" data-act="edit-repo" title="Rename or describe the repository — a write on a node you own">Edit</button>
   <select id="branch-select" aria-label="Branch"></select>
   <span class="head" id="head-label"></span><span class="dirty hidden" id="dirty">· uncommitted changes</span>
   <form id="commit-form" class="commit-form"><input type="text" name="message" id="message" maxlength="120" autocomplete="off" placeholder="Commit message" required><button type="submit" class="primary" id="commit-btn">Commit</button></form>
   <span class="hint" id="commit-hint"></span>
+  <form id="repo-form" class="repo-form row hidden"><input type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" aria-label="Name"><input type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line" aria-label="Description"><button type="submit" class="small primary">Save</button><button type="button" class="small" data-act="cancel-repo">Cancel</button></form>
   <div id="merge-banner" class="merge-banner hidden"></div>
 </div>
 <div class="bench" id="bench">
   <section class="panel edit-panel"><div id="buffer" class="buffer" aria-label="The shared buffer"></div></section>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the panels" tabindex="0"></div>
   <section class="panel right">
-    <div class="preview-head">running <span class="what" id="preview-what">—</span><label><input type="checkbox" id="autorun" checked> auto</label><button class="small" data-act="run">Run</button><button class="small" data-act="discard" id="discard">Discard changes</button></div>
+    <div class="preview-head">running <span class="what" id="preview-what">—</span><label><input type="checkbox" id="autorun" checked> auto</label><button class="small" data-act="run">Run</button><button class="small" data-act="download" title="The buffer as one .html file — HTML, CSS and JavaScript together, ready to open anywhere">Download .html</button><button class="small" data-act="discard" id="discard">Discard changes</button></div>
     <iframe id="preview" class="preview" sandbox="allow-scripts" title="The running project"></iframe>
     <div class="dock">
       <nav class="tabs" aria-label="Repository"><button type="button" data-tab="history">History</button><button type="button" data-tab="pulls">Pull requests</button><button type="button" data-tab="branches">Branches</button></nav>
@@ -627,6 +637,8 @@ const renderCollabs = (repo, branch) => {
 function renderRepoBar() {
   const branch = currentBranch(); if (!branch || !$("head-label")) return
   const repo = nodes.get(branch.value.repo), dirty = domText() !== contentOf(branch.value.head), writable = canWriteBranch(branch), merging = pendingMerge.get(branch.id)
+  $("repo-name").textContent = repo.value.name; $("repo-name").title = repo.value.description
+  $("edit-repo").classList.toggle("hidden", !eqAddr(repo.value.owner, me))
   $("head-label").textContent = `@ ${short(branch.value.head)}`
   $("dirty").classList.toggle("hidden", !dirty)
   $("discard").disabled = !dirty
@@ -666,7 +678,7 @@ const renderCommitPanel = (repo, branch, id) => {
   const LIMIT = 400, shown = rows.slice(0, LIMIT)
   $("commit-panel").innerHTML = `<h3>${esc(short(c.id))} · ${esc(c.value.message)}</h3>
 <p class="meta">${esc(nameOf(c.value.owner))} · ${new Date(c.value.at).toLocaleString()} · ${c.value.parents?.length ? `parent${c.value.parents.length > 1 ? "s" : ""} ${c.value.parents.map(short).map(esc).join(", ")}` : "root"} · <span title="${esc(c.id)}">${esc(abbr(c.value.owner))}:${esc(short(c.id))}…</span></p>
-<div class="actions"><button class="small" data-act="run-commit" data-commit="${esc(c.id)}">Run this version</button>${branch && me ? `<button class="small" data-act="load-commit" data-commit="${esc(c.id)}">Load into the editor</button>` : ""}</div>
+<div class="actions"><button class="small" data-act="run-commit" data-commit="${esc(c.id)}">Run this version</button><button class="small" data-act="download-commit" data-commit="${esc(c.id)}">Download this version</button>${branch && me ? `<button class="small" data-act="load-commit" data-commit="${esc(c.id)}">Load into the editor</button>` : ""}</div>
 <div class="diff-summary">${parent ? `against ${esc(short(parent.id))}: ` : "the whole file: "}<span class="add">+${added}</span> <span class="del">−${removed}</span></div>
 <pre class="diff">${shown.map((r) => `<div class="${r.kind}">${r.kind === "add" ? "+" : r.kind === "del" ? "−" : " "} ${esc(r.text)}</div>`).join("")}${rows.length > LIMIT ? `<div class="more">… ${rows.length - LIMIT} more lines</div>` : ""}</pre>`
 }
@@ -751,7 +763,15 @@ document.addEventListener("click", async (e) => {
   const act = a.dataset.act
   try {
     if (a.dataset.tab) { showTab(a.dataset.tab); return }
+    if (act === "edit-repo") {
+      const repo = nodes.get(route().repo), f = $("repo-form"); if (!repo || !f) return
+      f.elements.name.value = repo.value.name; f.elements.description.value = repo.value.description ?? ""
+      f.classList.remove("hidden"); f.elements.name.focus(); return
+    }
+    if (act === "cancel-repo") { $("repo-form")?.classList.add("hidden"); return }
     if (act === "run") { runPreview(domText(), "the buffer"); return }
+    if (act === "download") { const b = currentBranch(); download(domText(), fileName(b && nodes.get(b.value.repo))); return }
+    if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(c.value.content, fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
     if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
     if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) runPreview(c.value.content, `${short(c.id)} — ${c.value.message}`); return }
     if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, c.value.content); notice(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
@@ -785,6 +805,10 @@ document.addEventListener("submit", async (e) => {
     }
     const branch = currentBranch(); if (!branch) return
     const repo = nodes.get(branch.value.repo)
+    if (f.id === "repo-form") { // the repository node is the owner's: a rename is one write on it
+      await patch(repo.id, { name: field("name"), description: field("description") })
+      f.classList.add("hidden"); notice("Repository updated."); scheduleRender(); return
+    }
     if (f.id === "commit-form") {
       const message = field("message"); if (!message) return
       await flushSaves()

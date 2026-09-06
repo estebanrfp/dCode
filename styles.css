@@ -139,6 +139,9 @@ form.row input[type="text"] { flex: 1; min-width: 120px; }
 .repo-bar .commit-form { display: flex; gap: var(--s2); align-items: center; margin-left: auto; }
 .repo-bar .commit-form input { width: 280px; max-width: 40vw; }
 .repo-bar .hint { width: 100%; font-size: 12px; color: var(--text-3); }
+.repo-form { width: 100%; }
+.repo-form input[name="name"] { flex: 0 1 220px; font-family: var(--mono); }
+.repo-form input[name="description"] { flex: 1 1 280px; }
 .merge-banner { width: 100%; padding: var(--s2) var(--s3); border: 1px solid var(--warn); border-radius: 6px; font-size: 13px; color: var(--text); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 
 .bench { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--doc-width, 55%) 11px minmax(0, 1fr); }

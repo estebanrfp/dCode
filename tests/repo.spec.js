@@ -4,6 +4,7 @@
  * named by the author's address and a hash of what it holds; every commit is
  * a whole page and runs. Two visitors, real WebRTC between them.
  */
+import { readFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
 import { TEMPLATE_LINES, assertTransport, commit, commitIds, connected, createRepo, freshRoom, go, head, lineIndex, lineWith, lines, loginAs, preview, rows, seesLine, setLine, short, visitor } from "./_helpers.js"
 
@@ -18,12 +19,22 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(rows(alice.page).first()).toContainText("Initial commit")
   await expect(preview(alice.page)).toContainText("Hello from dCode") // the buffer runs on arrival
 
-  // Bob opens the repository: the same buffer, line for line.
+  // The repository is a node its owner owns: Alice renames and describes it in place; Bob reads the new name.
+  await alice.page.locator("#edit-repo").click()
+  await alice.page.locator('#repo-form [name="name"]').fill("hello-world")
+  await alice.page.locator('#repo-form [name="description"]').fill("Renamed and described after the fact")
+  await alice.page.locator('#repo-form button[type="submit"]').click()
+  await expect(alice.page.locator("#notice")).toContainText("Repository updated")
+  await expect(alice.page.locator("#repo-name")).toHaveAttribute("title", "Renamed and described after the fact")
+
+  // Bob opens the repository: the same buffer, line for line — and no Edit button, it is not his node.
   await go(bob, "#/")
   await expect(bob.page.locator(".repos .name")).toHaveText("hello-world")
+  await expect(bob.page.locator(".repos .desc")).toContainText("Renamed and described after the fact")
   await bob.page.locator(".repos .name").click()
   await expect(bob.page).toHaveURL(new RegExp(`#/r/${repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))
   await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES)
+  await expect(bob.page.locator("#edit-repo")).toBeHidden()
 
   // Alice edits a line: it lands on Bob's screen live, the head has not moved, the page re-runs.
   await setLine(alice, "Hello from dCode", "  <h1>Hello, Bob, from dCode</h1>")
@@ -51,13 +62,23 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(bob.page.locator("#commit-panel .diff .del")).toHaveText(/Hello from dCode/)
   await expect(bob.page.locator("#commit-panel .diff .add")).toHaveText(/Hello, Bob, from dCode/)
 
-  // Time travel: the first version, selected in the timeline, runs as it was.
+  // The project is one file and leaves as one: the buffer downloads as <repo>.html, with what Bob sees.
+  const [file] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download"]').click()])
+  expect(file.suggestedFilename()).toBe("hello-world.html")
+  const saved = readFileSync(await file.path(), "utf8")
+  expect(saved).toContain("Hello, Bob, from dCode")
+  expect(saved.split("\n")).toHaveLength(TEMPLATE_LINES)
+
+  // Time travel: the first version, selected in the timeline, runs as it was — and downloads as it was.
   await rows(bob.page).nth(1).click()
   await expect(bob.page.locator("#commit-panel")).toContainText("root")
   await bob.page.locator('[data-act="run-commit"]').click()
   await expect(bob.page.locator("#preview-what")).toContainText("Initial commit")
   await expect(preview(bob.page)).toContainText("Hello from dCode")
   await expect(preview(bob.page)).not.toContainText("Hello, Bob")
+  const [old] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download-commit"]').click()])
+  expect(old.suggestedFilename()).toMatch(/^hello-world-[0-9a-f]{7}\.html$/)
+  expect(readFileSync(await old.path(), "utf8")).toContain("Hello from dCode")
 
   await assertTransport(bob)
   await alice.close(); await bob.close()
