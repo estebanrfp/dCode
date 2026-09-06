@@ -281,6 +281,7 @@ let current = null // { repo, branch } of the mounted buffer
 const buffer = () => $("buffer")
 const orderOf = (li) => parseFloat(li.dataset.order)
 const isLine = (el) => !!el?.classList?.contains("line")
+const shown = (el) => isLine(el) && el.offsetParent !== null // a neighbour the current view shows: the caret never hops into a hidden line
 const fieldOf = (li) => li?.querySelector("textarea")
 function placeSorted(li) {
   const next = [...buffer().children].find((el) => el !== li && (orderOf(el) > orderOf(li) || (orderOf(el) === orderOf(li) && el.id > li.id)))
@@ -294,6 +295,7 @@ const paint = (ta, text) => {
   const { selectionStart: from, selectionEnd: to } = ta
   ta.value = text
   ta.setSelectionRange(Math.min(from, text.length), Math.min(to, text.length))
+  highlight(ta.closest(".line"))
 }
 /** The buffer as you see it: what a commit takes, what the dirty flag compares. */
 const domText = () => [...buffer().children].map((li) => fieldOf(li).value).join("\n")
@@ -342,7 +344,7 @@ async function mergeLine(prevLi, li, ta) {
 // Alt+↑/↓: a line moves by taking a key between its new neighbours — one put on the same node.
 async function moveLine(li, ta, dir) {
   const over = dir < 0 ? li.previousElementSibling : li.nextElementSibling
-  if (!isLine(over)) return
+  if (!shown(over)) return
   const [prev, next] = dir < 0 ? [over.previousElementSibling, over] : [over, over.nextElementSibling]
   const order = keyBetween(isLine(prev) ? orderOf(prev) : undefined, isLine(next) ? orderOf(next) : undefined)
   focusNextId = li.id; focusNextPos = ta.selectionStart
@@ -356,6 +358,7 @@ function createLine(id, { repo, branch, text, order }) {
   Object.assign(li.dataset, { repo, branch, order })
   const ln = document.createElement("span"); ln.className = "ln"
   const cell = document.createElement("div"); cell.className = "cell"
+  const hl = document.createElement("pre"); hl.className = "hl"; hl.setAttribute("aria-hidden", "true")
   const ta = document.createElement("textarea")
   ta.rows = 1; ta.wrap = "off"; ta.spellcheck = false; ta.value = text
   ta.setAttribute("aria-label", "Line")
@@ -365,6 +368,7 @@ function createLine(id, { repo, branch, text, order }) {
     liveDirty = true // this keystroke travels the room NOW, not in 250 ms
     announce()
     renderMarks() // my typing shifts the text under a remote caret
+    highlight(li); scheduleLayout() // the colours follow the keystroke; a tag typed here may move a language boundary
     afterChange()
   })
   ta.addEventListener("keydown", async (e) => {
@@ -376,12 +380,12 @@ function createLine(id, { repo, branch, text, order }) {
     else if (e.key === "Tab" && !e.shiftKey) { e.preventDefault(); ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })) }
     else if (e.key === "Backspace" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
       const prev = li.previousElementSibling
-      if (!isLine(prev)) return
+      if (!shown(prev)) return
       e.preventDefault(); await mergeLine(prev, li, ta)
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); await moveLine(li, ta, e.key === "ArrowUp" ? -1 : 1) }
     else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       const target = e.key === "ArrowUp" ? li.previousElementSibling : li.nextElementSibling
-      if (!isLine(target)) return
+      if (!shown(target)) return
       e.preventDefault(); caretTo(target, Math.min(ta.selectionStart, fieldOf(target).value.length)) // the column survives the hop
     }
   })
@@ -416,15 +420,17 @@ function createLine(id, { repo, branch, text, order }) {
     if (result && ta.value !== result.value.text) { ta.value = result.value.text; afterChange() }
   })
 
-  cell.append(ta); li.append(ln, cell)
+  cell.append(hl, ta); li.append(ln, cell)
   placeSorted(li)
+  li.dataset.lang = li.previousElementSibling?.dataset.langNext ?? "html" // its language, until the layout pass confirms it: a new line inside <style> must be visible in the CSS view to take the caret
+  highlight(li)
   if (id === focusNextId) { focusNextId = null; ta.focus(); ta.setSelectionRange(focusNextPos, focusNextPos); focusNextPos = 0 }
-  renumber(); renderMarks(); afterChange()
+  scheduleLayout(); renderMarks(); afterChange()
 }
 function updateLine(id, { text, order }) {
   const li = $(id); if (!li) return
   if (orderOf(li) !== order) {
-    li.dataset.order = order; placeSorted(li); renumber()
+    li.dataset.order = order; placeSorted(li); scheduleLayout()
     if (id === focusNextId) { focusNextId = null; caretTo(li, focusNextPos); focusNextPos = 0 } // the move you asked for: the caret comes along
   }
   const ta = fieldOf(li)
@@ -438,20 +444,60 @@ function updateLine(id, { text, order }) {
   }
   afterChange()
 }
-function dropLine(li) { li.remove(); renumber(); renderMarks(); afterChange() }
-/** Line numbers are positions, derived; the buffer is as wide as its longest line. */
-function renumber() {
-  const lines = [...buffer().children]
-  let longest = 60
-  lines.forEach((li, i) => { li.firstChild.textContent = i + 1; longest = Math.max(longest, fieldOf(li).value.length) })
+function dropLine(li) { li.remove(); scheduleLayout(); renderMarks(); afterChange() }
+/**
+ * Line numbers are positions, derived; the buffer is as wide as its longest
+ * line; and every line knows the language it is in — HTML, the CSS inside a
+ * <style> block, the JavaScript inside a <script> block — for its colours and
+ * for the views. The tag lines themselves are HTML.
+ */
+function relayout() {
+  const list = [...buffer().children]
+  const seen = { html: 0, css: 0, js: 0 }
+  let longest = 60, state = "html"
+  list.forEach((li, i) => {
+    const t = fieldOf(li).value
+    li.firstChild.textContent = i + 1; longest = Math.max(longest, t.length)
+    let lang = state
+    if (state === "html") { if (/<style\b/i.test(t)) state = /<\/style>/i.test(t) ? "html" : "css"; else if (/<script\b(?![^>]*\bsrc=)/i.test(t)) state = /<\/script>/i.test(t) ? "html" : "js" }
+    else if (state === "css" && /<\/style>/i.test(t)) { state = "html"; lang = "html" }
+    else if (state === "js" && /<\/script>/i.test(t)) { state = "html"; lang = "html" }
+    if (li.dataset.lang !== lang) { li.dataset.lang = lang; highlight(li) }
+    li.dataset.langNext = state
+    seen[lang]++
+  })
   buffer().style.setProperty("--cols", longest + 2)
+  const view = buffer().dataset.view ?? "html"
+  $("view-hint").textContent = view !== "html" && !seen[view] ? `no <${view === "css" ? "style" : "script"}> block in this file — add one in the HTML view` : ""
 }
+let layoutQueued = false
+const scheduleLayout = () => { if (layoutQueued) return; layoutQueued = true; requestAnimationFrame(() => { layoutQueued = false; if (buffer()) relayout() }) }
+
+// ── Colours: a small tokenizer per language, painted under the transparent text ──
+const tok = (cls, s) => `<span class="t-${cls}">${esc(s)}</span>`
+const paintTokens = (s, re, classify) => {
+  let out = "", last = 0
+  for (const m of s.matchAll(re)) { out += esc(s.slice(last, m.index)) + classify(m); last = m.index + m[0].length }
+  return out + esc(s.slice(last))
+}
+const ATTRS = /([^\s=\/>]+)(\s*=\s*)?("[^"]*"|'[^']*'|[^\s>]+)?/g
+const HL = {
+  html: (s) => paintTokens(s, /(<!--.*?(?:-->|$))|(<!DOCTYPE\b[^>]*>)|(<\/?)([a-zA-Z][\w:.-]*)([^>]*?)(\/?>|$)|(&[a-zA-Z#0-9]+;)/gi, (m) =>
+    m[1] ? tok("com", m[1]) : m[2] ? tok("kw", m[2]) : m[7] ? tok("num", m[7])
+      : tok("punct", m[3]) + tok("tag", m[4]) + paintTokens(m[5], ATTRS, (a) => tok("attr", a[1]) + esc(a[2] ?? "") + (a[3] ? tok("str", a[3]) : "")) + tok("punct", m[6])),
+  css: (s) => paintTokens(s, /(\/\*.*?(?:\*\/|$))|("[^"]*"|'[^']*')|([^{};:\s][^{;]*?)(?=\s*\{)|([-\w]+)(?=\s*:)|(#[0-9a-fA-F]{3,8}\b|-?\d*\.?\d+[a-z%]*)|([{}();,:])/g, (m) =>
+    m[1] ? tok("com", m[1]) : m[2] ? tok("str", m[2]) : m[3] ? tok("sel", m[3]) : m[4] ? tok("prop", m[4]) : m[5] ? tok("num", m[5]) : tok("punct", m[6])),
+  js: (s) => paintTokens(s, /(\/\/.*$|\/\*.*?(?:\*\/|$))|(`(?:\\.|[^`\\])*`?|"(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?)|\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|class|extends|import|export|from|default|async|await|try|catch|finally|throw|typeof|instanceof|of|in|this|null|undefined|true|false|yield|static|delete|void)\b|(\b\d[\w.]*)|([A-Za-z_$][\w$]*)(?=\s*\()|([{}()[\];,.=+\-*\/%<>!&|?:^~]+)/g, (m) =>
+    m[1] ? tok("com", m[1]) : m[2] ? tok("str", m[2]) : m[3] ? tok("kw", m[3]) : m[4] ? tok("num", m[4]) : m[5] ? tok("fn", m[5]) : tok("punct", m[6])),
+}
+const highlight = (li) => { const pre = li?.querySelector(".hl"); if (pre) pre.innerHTML = HL[li.dataset.lang ?? "html"](fieldOf(li).value) }
+
 /** The editor shows this branch's lines; the store keeps feeding it while it is mounted. */
 function mountBuffer(repo, branch) {
   current = { repo, branch }
   buffer().replaceChildren()
   for (const n of linesOf(branch)) createLine(n.id, n.value)
-  renumber()
+  relayout()
   runPreview(domText(), "the buffer")
   afterChange()
 }
@@ -587,7 +633,7 @@ const repoSkeleton = (repo) => `<section class="repo">
   <div id="merge-banner" class="merge-banner hidden"></div>
 </div>
 <div class="bench" id="bench">
-  <section class="panel edit-panel"><div id="buffer" class="buffer" aria-label="The shared buffer"></div></section>
+  <section class="panel edit-panel"><nav class="views" aria-label="View"><button type="button" data-view="html">HTML</button><button type="button" data-view="css">CSS</button><button type="button" data-view="js">JS</button><span class="view-hint" id="view-hint"></span></nav><div id="buffer" class="buffer" aria-label="The shared buffer"></div></section>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the panels" tabindex="0"></div>
   <section class="panel right">
     <div class="preview-head">running <span class="what" id="preview-what">—</span><label><input type="checkbox" id="autorun" checked> auto</label><button class="small" data-act="run">Run</button><button class="small" data-act="download" title="The buffer as one .html file — HTML, CSS and JavaScript together, ready to open anywhere">Download .html</button><button class="small" data-act="discard" id="discard">Discard changes</button></div>
@@ -605,6 +651,15 @@ const showTab = (name) => {
   sessionStorage.dcodeTab = name
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("sel", b.dataset.tab === name))
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${name}`))
+}
+// The views are filters over the one file: CSS shows the lines inside <style>,
+// JS the lines inside <script>, HTML everything — the same nodes, the file's
+// own line numbers, edited and synced the same way.
+const showView = (name) => {
+  sessionStorage.dcodeView = name
+  if (buffer()) buffer().dataset.view = name
+  document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("sel", b.dataset.view === name))
+  if (buffer()) relayout()
 }
 const renderBranches = (repo, branches, branch, commits, fromId) => {
   const counts = new Map()
@@ -714,7 +769,7 @@ const renderRepo = (r, main) => {
   const branches = branchesOf(repo.id), commits = commitsOf(repo.id), prs = prsOf(repo.id)
   const branch = branches.find((b) => b.id === r.branch) ?? defaultBranch(repo, branches)
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
-  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "history"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
+  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "history"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
   if (branch && main.dataset.branch !== branch.id) { main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
   renderBranches(repo, branches, branch, commits, selected)
   renderPRs(repo, branches, branch, prs)
@@ -763,6 +818,7 @@ document.addEventListener("click", async (e) => {
   const act = a.dataset.act
   try {
     if (a.dataset.tab) { showTab(a.dataset.tab); return }
+    if (a.dataset.view) { showView(a.dataset.view); return }
     if (act === "edit-repo") {
       const repo = nodes.get(route().repo), f = $("repo-form"); if (!repo || !f) return
       f.elements.name.value = repo.value.name; f.elements.description.value = repo.value.description ?? ""

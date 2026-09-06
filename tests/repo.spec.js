@@ -84,6 +84,51 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await alice.close(); await bob.close()
 })
 
+test("the views are filters over one file: CSS shows the <style> block and JS the <script> block with the file's line numbers; an edit in a view is the same node; the code is coloured", async ({ browser }) => {
+  const room = freshRoom("views")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "alice"); await loginAs(bob, "bob")
+  await connected(alice); await connected(bob)
+  const { repo } = await createRepo(alice, "views")
+  const visible = (page) => page.locator("#buffer .line:visible")
+  const numbers = (page) => visible(page).locator(".ln").allTextContents()
+
+  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES)
+  await expect(alice.page.locator('#buffer .line[data-lang="css"]')).toHaveCount(2)
+  await expect(alice.page.locator('#buffer .line[data-lang="js"]')).toHaveCount(2)
+  // Coloured: tags in the HTML, properties in the CSS, keywords in the JS — painted under the text.
+  await expect(alice.page.locator('#buffer .line:nth-child(2) .hl .t-tag')).toHaveText("html")
+  await expect(alice.page.locator('#buffer .line[data-lang="css"] .hl .t-prop').first()).toHaveText("margin")
+  await expect(alice.page.locator('#buffer .line[data-lang="js"] .hl .t-kw').first()).toHaveText("let")
+
+  await alice.page.locator('.views [data-view="css"]').click()
+  await expect(visible(alice.page)).toHaveCount(2)
+  expect(await numbers(alice.page)).toEqual(["7", "8"]) // the file's numbers, not the view's
+  await alice.page.locator('.views [data-view="js"]').click()
+  await expect(visible(alice.page)).toHaveCount(2)
+  expect(await numbers(alice.page)).toEqual(["18", "19"])
+
+  // An edit in the CSS view is an edit of the same node: Bob, in the HTML view, sees it on line 8.
+  await alice.page.locator('.views [data-view="css"]').click()
+  await setLine(alice, "button {", "  button { font: inherit; padding: 12px 24px; border-radius: 12px; border: 1px solid #4c8dff; background: none; color: inherit; cursor: pointer; }")
+  await go(bob, `#/r/${repo}`)
+  await seesLine(bob, "padding: 12px 24px")
+  expect(await bob.page.locator("#buffer .line").locator("textarea").evaluateAll((els) => els.findIndex((e) => e.value.includes("padding: 12px 24px")))).toBe(7)
+  await expect(bob.page.locator('#buffer .line[data-lang="css"] .hl .t-num').filter({ hasText: "12px" }).first()).toBeVisible()
+
+  // Enter at the end of the last CSS line, in the CSS view: the new line is inside <style>, visible here, and takes the caret.
+  const last = await lineWith(alice.page, "padding: 12px 24px")
+  await last.click(); await last.evaluate((el) => el.setSelectionRange(el.value.length, el.value.length))
+  await alice.page.keyboard.press("Enter")
+  await expect(visible(alice.page)).toHaveCount(3)
+  await alice.page.keyboard.type("h1 { letter-spacing: .02em; }")
+  await seesLine(bob, "letter-spacing")
+  await expect(bob.page.locator("#buffer .line").filter({ has: bob.page.locator('textarea') })).toHaveCount(TEMPLATE_LINES + 1)
+  await alice.page.locator('.views [data-view="html"]').click()
+  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES + 1)
+  await alice.close(); await bob.close()
+})
+
 test("the buffer is the block editor for code: two people on two lines, Enter splits a node, Backspace merges it back, Discard returns to the head", async ({ browser }) => {
   const room = freshRoom("buffer")
   const alice = await visitor(browser, room), bob = await visitor(browser, room)
