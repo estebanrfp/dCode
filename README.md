@@ -51,7 +51,7 @@ Two layers, one graph.
 - **Collaborators as data.** `grant` and `revoke` on the branch node, honoured by every receiver; no server decides who may push.
 - **Derived state from one subscription.** One `db.map` feeds a store; the buffer, the branches, the timeline, the diff and every pull request's state are pure functions of it.
 - **Encryption with keys the engine keeps.** `db.sm.put` stores the vault encrypted with a key wrapped per reader; `grant` and `revoke` on it add and remove envelopes and rotate the key. The app seals the code with one symmetric key it keeps there — no key server, no secret typed anywhere.
-- **Identity with no server.** Mnemonic recovery, passkey sessions — a session opened with a phrase takes a passkey later, from the identity view behind the session pill — and demo identities so two windows can meet in one click. The theme follows the [design guide](https://github.com/estebanrfp/gdb/blob/main/docs/genosdb-design-guide.md): system, light or dark, one button, tokens only.
+- **Identity with no server.** The design guide's door: mnemonic recovery, passkey sessions that resume silently on a reload and open with one click in a new tab, a session opened with a phrase that takes a passkey later from the identity view behind the session pill, and demo identities so two windows can meet in one click. The theme follows the [design guide](https://github.com/estebanrfp/gdb/blob/main/docs/genosdb-design-guide.md): system, light or dark, one button, tokens only.
 
 ## Run it
 
@@ -63,7 +63,7 @@ bun tests/server.mjs        # http://localhost:5805
 
 Two useful query parameters: `?room=anything` opens a private sandbox of the whole site (the tests use it), and `?relay=ws://…` points signalling at a relay of your own.
 
-**Demo identities.** The sign-in page offers three one-click identities from the GenosDB design guide: `alice`, `bob`, and the `constitution` authority. Open two browsers, create a repository as Alice in one, open it as Bob in the other: type in both and watch the carets; Bob's commit goes to a branch of his own, his pull request appears on Alice's side, and her merge moves `main` everywhere.
+**Demo identities.** The identity door — the design guide's modal, open on every load without a session and dismissible, since reading needs none — offers three one-click identities from the guide: `alice`, `bob`, and the `constitution` authority. Open two browsers, create a repository as Alice in one, open it as Bob in the other: type in both and watch the carets; Bob's commit goes to a branch of his own, his pull request appears on Alice's side, and her merge moves `main` everywhere.
 
 ## Tests
 

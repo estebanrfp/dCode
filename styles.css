@@ -38,6 +38,9 @@
   --s3: 12px;
   --s4: 16px;
   --s5: 24px;
+  --s6: 32px;
+  --radius-lg: 14px;
+  --backdrop: rgba(0, 0, 0, .6);
   --row: 30px;
   --line: 20px;
   --gutter: 52px;
@@ -62,6 +65,7 @@
   --violet: #7c3aed;
   --border-subtle: #e4e7ee;
   --border-strong: #d4d9e3;
+  --backdrop: rgba(26, 29, 36, .45);
   --t-tag: #c0392b;
   --t-attr: #b45309;
   --t-str: #15803d;
@@ -140,8 +144,33 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 .brand:hover { text-decoration: none; color: var(--accent); }
 .nav a { color: var(--text-secondary); margin-right: var(--s3); font-size: 13px; }
 .nav a.sel { color: var(--text-primary); }
-.session { margin-left: auto; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
-.session .who { color: var(--text-primary); font-family: var(--mono); font-size: 12px; }
+/* The session, top-right, as the guide keeps it: the pill, the theme, the logout —
+   line icons pulled back by their own padding so the icon lands on the edge. */
+.session { display: flex; align-items: center; gap: var(--s3); margin-left: auto; margin-right: -6px; font-size: 13px; white-space: nowrap; }
+/* Your address, abbreviated on screen; the pill opens the identity view. */
+.session-addr { font-family: var(--mono); font-size: 13px; color: var(--text-secondary); background: none; border: none; padding: 0; }
+.session-addr:hover { color: var(--text-primary); text-decoration: none; }
+.session-addr:empty { display: none; }
+button.ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+button.ghost:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+
+/* ── The identity door, as docs.html draws it ───────────────────────────── */
+dialog { width: min(440px, calc(100vw - var(--s6))); padding: var(--s6); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); color: var(--text-primary); text-align: center; }
+dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
+.modal-title { margin: 0 0 var(--s3); font-size: 26px; font-weight: 700; letter-spacing: -.02em; text-transform: none; color: var(--text-primary); } /* the dock's h2 is a small caps label; the door's is the app's name */
+.modal-hint { margin: 0 0 var(--s5); font-size: 14px; color: var(--text-secondary); }
+.mnemonic-field { position: relative; }
+#mnemonic-input { min-height: 45px; display: block; width: 100%; box-sizing: border-box; background: none; padding-right: 32px; overflow: hidden; font-family: var(--mono); font-size: 13px; text-align: left; resize: none; }
+#mnemonic-input:focus { border-color: var(--border-strong); }
+.field-action { position: absolute; right: 6px; bottom: 6px; display: flex; padding: 5px; background: none; border: none; color: var(--text-tertiary); }
+.field-action svg { width: 15px; height: 15px; }
+.field-action:hover:not(:disabled) { color: var(--text-primary); border-color: transparent; }
+.modal-actions { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.modal-actions button { width: 100%; padding: 13px var(--s4); font-size: 14px; font-weight: 600; }
+.demo-logins { display: contents; }
+.modal-warn { display: grid; place-items: center; min-height: 45px; margin: var(--s2) 0 0; font-size: 13px; font-weight: 600; color: var(--warn); }
+.modal-status { min-height: 18px; margin: var(--s2) 0 0; font-size: 12px; color: var(--text-tertiary); }
+.modal-status:empty { display: none; }
 /* Chrome that repeats on every screen is a line icon, no box — the guide's
    theme button as docs.html draws it; the icon shows the state you are in. */
 .icon-btn { display: flex; padding: 6px; background: none; border: none; color: var(--text-secondary); }

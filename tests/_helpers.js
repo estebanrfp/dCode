@@ -63,7 +63,7 @@ export const rejoin = async (v, hash = "#/") => { v.relay = RELAY; await go(v, h
 export const loginAs = async (v, name) => {
   await go(v, "#/login")
   await v.page.locator(`.demo-login:has-text("${name}")`).click()
-  await expect(v.page.locator("#session")).toContainText(name)
+  await expect(v.page.locator("#session-addr")).toContainText(name)
   v.name = name; v.address = ADDR[name]
 }
 export const connected = (v) => expect(v.page.locator("#presence")).toContainText(/[1-9]\d* peer/)
@@ -143,9 +143,16 @@ export const inStore = (v, text) => v.page.evaluate(async ([name, text]) => {
   return !!bytes && new TextDecoder("latin1").decode(bytes).includes(text)
 }, [`${v.room}_graph.msgpack`, text])
 export const persisted = (v, text) => expect.poll(() => inStore(v, text), { timeout: 30_000 }).toBe(true)
-/** A passkey for this page: Playwright's virtual authenticator, headless and in CI. */
+/** A passkey for this page: Playwright's virtual authenticator, headless and in CI. With PRF, like a platform authenticator. */
 export const virtualAuthenticator = async (v) => {
   const cdp = await v.context.newCDPSession(v.page)
   await cdp.send("WebAuthn.enable")
-  await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true } })
+  await cdp.send("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true } })
+}
+/** The door is open on every load without a session; reading needs none, so it can be put aside. */
+export const door = (page) => page.locator("#identity-modal")
+export const dismissDoor = async (v) => {
+  await expect(door(v.page)).toHaveAttribute("open", "") // after a reload the app is still booting: wait for the door before putting it aside
+  await v.page.keyboard.press("Escape")
+  await expect(door(v.page)).not.toHaveAttribute("open", "")
 }

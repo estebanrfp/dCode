@@ -680,17 +680,31 @@ const newPage = () => (me
 <div class="actions"><button type="submit" class="primary">Create repository and open the editor</button></div>
 <p class="note">The first commit will be signed by ${esc(nameOf(me))} (${esc(me)}). Nobody else can move <code>main</code> until you grant them write.</p></form></div>`
   : `<div class="page"><h1>New repository</h1><p class="lede"><a href="#/login">Sign in</a> to create a repository.</p></div>`)
-const loginPage = () => {
-  const s = session, onboarding = s.hasVolatileIdentity && !s.isActive
-  const demo = DEMO_IDENTITIES.map((i) => `<a href="#" class="demo-login" data-address="${esc(i.address)}">${i.emoji} ${esc(i.name)}${eqAddr(i.address, AUTHORITY) ? " (the authority)" : ""}</a>`).join("")
-  return `<div class="page"><h1>${onboarding ? "Your new identity" : "Sign in"}</h1><div class="formtable">
-<label for="mnemonic">phrase</label><textarea id="mnemonic" class="phrase" rows="3" placeholder="Enter your 12-word mnemonic phrase to sign in or recover…"${onboarding ? " readonly" : ""}>${onboarding ? esc(db.sm.getMnemonicForDisplayAfterRegistrationOrRecovery() ?? "") : ""}</textarea>
-${onboarding ? `<p class="note danger">Save this phrase. There is no reset.</p>` : ""}
-<div class="actions"><button id="login-btn">sign in with mnemonic</button>${!onboarding ? `<button id="generate-btn">generate new identity</button>` : ""}${onboarding && PASSKEYS_AVAILABLE && !s.isWebAuthnProtected ? `<button id="passkey-protect-btn">protect with passkey</button>` : ""}${!onboarding && PASSKEYS_AVAILABLE && s.hasWebAuthnHardwareRegistration ? `<button id="passkey-login-btn">sign in with passkey</button>` : ""}</div>
-${!onboarding ? `<p class="note demo">Demo identities, one click, so two windows can meet: ${demo}</p>` : ""}
-<p class="note">There is no account and no server: an identity is a key pair on this device. A mnemonic recovers it anywhere; a passkey keeps the session on this browser. Every commit you make is signed with it.</p>
-<p class="note status" id="login-status"></p></div></div>`
+// ── The identity door (design guide §4.1), rendered from the security state ──
+// One textarea does both jobs, every button is derived from the state on each
+// call, nothing here remembers anything — the SM reports several times while
+// an identity is generated, and a callback that only redraws cannot misfire.
+const door = $("identity-modal")
+const el = { mnemonic: $("mnemonic-input"), clip: $("mnemonic-clip"), generate: $("generate-btn"), passkeyProtect: $("passkey-protect-btn"), passkeyLogin: $("passkey-login-btn"), demo: $("demo-logins"), warning: $("phrase-warning") }
+const show = (node, visible) => node.classList.toggle("hidden", !visible)
+el.demo.innerHTML = DEMO_IDENTITIES.map((i) => `<button type="button" class="ghost demo-login" data-address="${esc(i.address)}">${i.emoji} ${esc(i.name)}${eqAddr(i.address, AUTHORITY) ? " (the authority)" : ""} (demo)</button>`).join("")
+const autoGrow = () => { const f = el.mnemonic; f.style.height = "auto"; const borders = f.offsetHeight - f.clientHeight; f.style.height = `${f.scrollHeight + borders}px` }
+const syncClipAffordance = () => show(el.clip, !!el.mnemonic.value.trim())
+const renderDoor = ({ isActive, hasVolatileIdentity, hasWebAuthnHardwareRegistration, isWebAuthnProtected }) => {
+  const onboarding = hasVolatileIdentity && !isActive // a fresh phrase, not yet saved
+  show(el.generate, !onboarding)
+  show(el.passkeyProtect, onboarding && PASSKEYS_AVAILABLE && !isWebAuthnProtected)
+  show(el.passkeyLogin, !onboarding && PASSKEYS_AVAILABLE && hasWebAuthnHardwareRegistration)
+  show(el.demo, !onboarding)   // never invite abandoning an unsaved phrase
+  show(el.warning, onboarding) // only a fresh phrase can still be lost
+  el.mnemonic.readOnly = onboarding
+  if (onboarding) el.mnemonic.value = db.sm.getMnemonicForDisplayAfterRegistrationOrRecovery() ?? el.mnemonic.value
+  else if (isActive || document.activeElement !== el.mnemonic) el.mnemonic.value = "" // signed in: always clear; signed out: never mid-paste
+  syncClipAffordance(); autoGrow()
 }
+door.onclick = (e) => { if (e.target === door) door.close() } // dismissible: the backdrop is the dialog itself as event target
+el.clip.onclick = async () => { try { await navigator.clipboard.writeText(el.mnemonic.value); say("door-status", "Phrase copied.") } catch { say("door-status", "Clipboard unavailable — select the phrase and copy it.") } }
+el.mnemonic.addEventListener("input", () => { syncClipAffordance(); autoGrow() })
 // The identity view: the session pill opens it. Protecting an identity with a
 // passkey is offered here, not only at onboarding — a session opened with a
 // phrase still holds its key in memory, and the engine can wrap it any time.
@@ -708,7 +722,7 @@ const sessionPage = () => {
 <tr><td>protected by a passkey</td><td>${yn(s.isWebAuthnProtected)}</td></tr>
 <tr><td>passkey on this browser</td><td>${yn(s.hasWebAuthnHardwareRegistration)}</td></tr>
 </table>
-<div class="actions">${canProtect ? `<button class="primary" id="passkey-protect-btn">Protect this identity with a passkey</button>` : ""}<button id="logout-btn">Sign out</button></div>
+<div class="actions">${canProtect ? `<button class="primary" id="protect-btn">Protect this identity with a passkey</button>` : ""}<button id="signout-btn">Sign out</button></div>
 <p class="note">${!PASSKEYS_AVAILABLE ? "Passkeys need HTTPS or localhost — an IP address is never a valid Relying Party ID." : s.isWebAuthnProtected ? "Sign out and back in with the passkey: the phrase is never typed again." : s.hasVolatileIdentity ? "Until a passkey holds it, the phrase is the only way to open this identity again — here or anywhere." : "This session was opened by a passkey."}</p>
 <p class="note status" id="login-status"></p></div>`
 }
@@ -878,9 +892,11 @@ const render = () => {
   renderNav(r.page); renderSession()
   if (r.page === "r" && r.repo) return renderRepo(r, main)
   main.dataset.repo = ""; main.classList.remove("full"); current = null
-  const titles = { "": "dCode", new: "New repository · dCode", login: "Sign in · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
-  main.innerHTML = { "": reposPage, new: newPage, login: loginPage, session: sessionPage, constitution: constitutionPage }[r.page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
-  document.title = titles[r.page] ?? "dCode"
+  if (r.page === "login" && !me && !door.open) door.showModal() // a contextual "Sign in" re-opens the door; the page behind it stays
+  const page = r.page === "login" ? "" : r.page
+  const titles = { "": "dCode", new: "New repository · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
+  main.innerHTML = { "": reposPage, new: newPage, session: sessionPage, constitution: constitutionPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  document.title = titles[page] ?? "dCode"
 }
 const renderRepo = (r, main) => {
   const repo = nodes.get(r.repo)
@@ -909,8 +925,11 @@ const renderRepo = (r, main) => {
 const renderNav = (page) => {
   $("nav").innerHTML = [["", "repositories"], ["new", "new"], ["constitution", "constitution"]].map(([p, label]) => `<a href="#/${p}" data-nav="${p}"${page === p ? ' class="sel"' : ""}>${label}</a>`).join("")
 }
-const renderSession = () => {
-  $("session").innerHTML = me ? `<a href="#/session" class="who" title="${esc(me)} — your identity">${esc(nameOf(me))}</a> · <a href="#" id="logout">sign out</a>` : `<a href="#/login">sign in</a>`
+const renderSession = () => { // the pill: name · abbreviated address, opening the identity view; the logout icon beside the theme
+  const pill = $("session-addr"), demo = me && DEMO_IDENTITIES.find((i) => eqAddr(i.address, me))
+  pill.textContent = me ? (demo ? `${demo.name} · ${session.abbrAddr}` : session.abbrAddr ?? me) : ""
+  pill.title = me ? `${me} — your identity` : ""
+  show($("logout-btn"), !!me)
 }
 
 // ── The divider between the panels is the resize control ───────────────────
@@ -947,7 +966,6 @@ document.addEventListener("click", async (e) => {
     if (a.dataset.tab) { showTab(a.dataset.tab); return }
     if (a.dataset.view) { showView(a.dataset.view); return }
     if (a.id === "theme-btn") { applyTheme(THEME_ORDER[(THEME_ORDER.indexOf(document.documentElement.dataset.pref) + 1) % THEME_ORDER.length]); return }
-    if (a.id === "logout-btn") return db.sm.clearSecurity()
     if (act === "copy-address") { try { await navigator.clipboard.writeText(me); say("login-status", "Address copied.") } catch { say("login-status", "Clipboard unavailable — select the address and copy it.") } return }
     if (act === "revoke-member") {
       const repo = nodes.get(route().repo); if (!repo?.value.vault) return
@@ -974,18 +992,21 @@ document.addEventListener("click", async (e) => {
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
     if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
-    if (a.id === "logout") { e.preventDefault(); return db.sm.clearSecurity() }
+    if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
     if (a.classList.contains("demo-login")) {
       e.preventDefault(); const id = DEMO_IDENTITIES.find((i) => eqAddr(i.address, a.dataset.address))
-      try { await db.sm.loginOrRecoverUserWithMnemonic(id.mnemonic) } catch { say("login-status", "Could not sign in.") } return
+      try { await db.sm.loginOrRecoverUserWithMnemonic(id.mnemonic) } catch { say("door-status", "Could not sign in.") } return
     }
-    if (a.id === "generate-btn") { e.preventDefault(); if (!await db.sm.startNewUserRegistration()) say("login-status", "Could not generate an identity."); return }
+    if (a.id === "generate-btn") { e.preventDefault(); if (!await db.sm.startNewUserRegistration()) say("door-status", "Could not generate an identity."); return }
     if (a.id === "login-btn") {
-      e.preventDefault(); const m = $("mnemonic").value.trim(); if (!m) return say("login-status", "Paste a mnemonic phrase first.")
-      try { if (!await db.sm.loginOrRecoverUserWithMnemonic(m)) say("login-status", "That mnemonic is not valid.") } catch { say("login-status", "That mnemonic is not valid.") } return
+      e.preventDefault(); const m = el.mnemonic.value.trim(); if (!m) return say("door-status", "Paste a mnemonic phrase first.")
+      try { if (!await db.sm.loginOrRecoverUserWithMnemonic(m)) say("door-status", "That mnemonic is not valid.") } catch { say("door-status", "That mnemonic is not valid.") } return
     }
-    if (a.id === "passkey-protect-btn") { e.preventDefault(); try { if (!await db.sm.protectCurrentIdentityWithWebAuthn()) say("login-status", "Passkey registration cancelled.") } catch { say("login-status", "Could not register the passkey.") } return }
-    if (a.id === "passkey-login-btn") { e.preventDefault(); try { if (!await db.sm.loginCurrentUserWithWebAuthn()) say("login-status", "Passkey sign-in cancelled.") } catch { say("login-status", "Could not sign in with the passkey.") } return }
+    if (a.id === "passkey-protect-btn" || a.id === "protect-btn") { // the door's button at onboarding, the identity view's afterwards: the same call
+      e.preventDefault(); const out = a.id === "protect-btn" ? "login-status" : "door-status"
+      try { if (!await db.sm.protectCurrentIdentityWithWebAuthn()) say(out, "Passkey registration cancelled.") } catch { say(out, "Could not register the passkey.") } return
+    }
+    if (a.id === "passkey-login-btn") { e.preventDefault(); try { if (!await db.sm.loginCurrentUserWithWebAuthn()) say("door-status", "Passkey sign-in cancelled.") } catch { say("door-status", "Could not sign in with the passkey.") } return }
   } catch (err) { notice(err.message) }
 })
 
@@ -1054,7 +1075,12 @@ db.sm.setSecurityStateChangeCallback((state) => {
   session = state
   me = state.isActive ? state.activeAddress : null
   if (me !== lastMe) { keyRings.clear(); lastMe = me } // a key ring belongs to a session: the next look at a private repository asks the vault again
-  if (state.isActive && route().page === "login") { location.hash = sessionStorage.dcodeGoto ?? "#/session"; sessionStorage.removeItem("dcodeGoto") }
+  renderSession()
+  renderDoor(state)
+  if (state.isActive) { // the door closes itself; a sign-in asked for by a page goes back there, one with nowhere to go lands on the identity view
+    door.close()
+    if (route().page === "login") { location.hash = sessionStorage.dcodeGoto ?? "#/session"; sessionStorage.removeItem("dcodeGoto") }
+  } else if (!door.open) door.showModal() // signed out *is* the door's state — dismissible, and any "Sign in" re-opens it
   $("main").dataset.repo = "" // what you may do on the page depends on who you are: rebuild it
   render()
 })
