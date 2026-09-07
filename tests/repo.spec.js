@@ -242,3 +242,32 @@ test("whole lines: Shift+↓ selects a range and the line numbers select another
   await expect(preview(alice.page)).toContainText("Clicked 0 times")
   await alice.close(); await bob.close()
 })
+
+test("two people type in the same line at the same instant, at different places: both keep their letters, and both peers hold the union", async ({ browser }) => {
+  const room = freshRoom("same-line")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "alice"); await loginAs(bob, "bob")
+  await connected(alice); await connected(bob)
+  const { repo } = await createRepo(alice, "same-line")
+  await go(bob, `#/r/${repo}`)
+  await seesLine(bob, "Hello from dCode")
+  const a = await lineWith(alice.page, "Hello from dCode"), b = await lineWith(bob.page, "Hello from dCode")
+  const original = await a.inputValue()
+
+  // Alice at the start of the line, Bob at its end, at once: two puts over the same
+  // value; the loser's engine re-applies its edit over the winner, and each editor
+  // lands the other's letters under its own caret.
+  await a.click(); await a.evaluate((ta) => ta.setSelectionRange(0, 0))
+  await b.click(); await b.evaluate((ta) => ta.setSelectionRange(ta.value.length, ta.value.length))
+  await Promise.all([alice.page.keyboard.type("AAA "), bob.page.keyboard.type(" BBB")])
+  const union = `AAA ${original} BBB`
+  await expect(a).toHaveValue(union)
+  await expect(b).toHaveValue(union)
+  expect(await a.evaluate((ta) => ta.selectionStart)).toBe(4)
+  expect(await b.evaluate((ta) => ta.selectionStart)).toBe(union.length)
+  await a.evaluate((ta) => ta.blur()); await b.evaluate((ta) => ta.blur())
+  await expect(a).toHaveValue(union)
+  await expect(b).toHaveValue(union)
+  await expect(preview(alice.page)).toContainText("Hello from dCode")
+  await alice.close(); await bob.close()
+})

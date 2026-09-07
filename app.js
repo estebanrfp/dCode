@@ -344,7 +344,8 @@ const mergePR = async (pr) => {
 // ── The buffer: the block editor, for code ──────────────────────────────────
 // One node per line `{ text, order }`, keyed fractionally, edited by everyone
 // on the branch. Line-level LWW: two people on different lines never collide;
-// only two carets on the SAME line still race. Enter splits a line into two
+// two on the SAME line keep both edits when they touch different places (the
+// engine's rescue, painted under the caret by updateLine). Enter splits a line into two
 // nodes, Backspace at its start merges it back, Alt+↑/↓ moves it with a new
 // key, a multi-line paste mints its keys in one batch. Live typing and the
 // carets ride one ephemeral channel; the debounced put is the truth.
@@ -373,8 +374,23 @@ const domText = () => [...buffer().children].map((li) => fieldOf(li).value).join
 
 // One debounced save per line, so typing costs one put per pause. A commit
 // flushes them first: what you see is what it takes.
+
+// The text the graph last confirmed for each line, and the same one-region
+// merge the engine makes: when a value lands on the line being typed in, the
+// keystrokes not yet written stay and the rest lands.
+const known = new Map()
+const region = (base, text) => {
+  let from = 0; while (from < base.length && from < text.length && base[from] === text[from]) from++
+  let tail = 0; while (tail < base.length - from && tail < text.length - from && base[base.length - 1 - tail] === text[text.length - 1 - tail]) tail++
+  return { from, to: base.length - tail, ins: text.slice(from, text.length - tail) }
+}
+const mergeText = (base, mine, theirs) => {
+  const [a, b] = [region(base, mine), region(base, theirs)].sort((x, y) => x.from - y.from || x.to - y.to)
+  if (a.to > b.from || (a.from === b.from && a.to === b.to)) return theirs
+  return base.slice(0, a.from) + a.ins + base.slice(a.to, b.from) + b.ins + base.slice(b.to)
+}
 const savers = new Map()
-const saveNow = (id, li) => { savers.delete(id); return putLine(li.dataset.repo, li.dataset.branch, fieldOf(li).value, orderOf(li), id) }
+const saveNow = (id, li) => { savers.delete(id); known.set(id, fieldOf(li).value); return putLine(li.dataset.repo, li.dataset.branch, fieldOf(li).value, orderOf(li), id) }
 function scheduleSave(id, li) { clearTimeout(savers.get(id)); savers.set(id, setTimeout(() => saveNow(id, li), 250)) }
 const cancelSave = (id) => { clearTimeout(savers.get(id)); savers.delete(id) }
 const flushSaves = () => Promise.all([...savers.keys()].map((id) => { clearTimeout(savers.get(id)); const li = $(id); return li ? saveNow(id, li) : savers.delete(id) }))
@@ -431,7 +447,7 @@ function createLine(id, { repo, branch, text, order }) {
   const cell = document.createElement("div"); cell.className = "cell"
   const hl = document.createElement("pre"); hl.className = "hl"; hl.setAttribute("aria-hidden", "true")
   const ta = document.createElement("textarea")
-  ta.rows = 1; ta.wrap = "off"; ta.spellcheck = false; ta.value = text
+  ta.rows = 1; ta.wrap = "off"; ta.spellcheck = false; ta.value = text; known.set(id, text)
   ta.setAttribute("aria-label", "Line")
 
   ta.addEventListener("input", () => {
@@ -513,14 +529,24 @@ function updateLine(id, { text, order }) {
     if (id === focusNextId) { focusNextId = null; caretTo(li, focusNextPos); focusNextPos = 0 } // the move you asked for: the caret comes along
   }
   const ta = fieldOf(li)
-  // Never fight the local cursor: the line being typed in RIGHT NOW keeps
-  // what you see and syncs on blur. The live channel may have painted this
-  // text already — then this is a no-op; when it differs, the graph lands.
-  if (!isMine(ta) && ta.value !== text) {
-    paint(ta, text)
-    li.classList.remove("remote"); void li.offsetWidth; li.classList.add("remote") // restart the flash
+  // The live channel may have painted this text already — then this is a
+  // no-op; when it differs, the graph lands. On the line being typed in RIGHT
+  // NOW it lands merged: the keystrokes not yet written stay and the caret
+  // shifts by what landed before it — the next save carries both, so the
+  // engine's rescue is never undone.
+  if (ta.value !== text) {
+    if (isMine(ta)) {
+      const caret = ta.selectionStart, base = known.get(id) ?? ta.value, r = region(base, text)
+      ta.value = mergeText(base, ta.value, text); highlight(li); scheduleLayout()
+      const at = caret + (r.from <= caret ? r.ins.length - (r.to - r.from) : 0)
+      ta.setSelectionRange(at, at)
+    } else {
+      paint(ta, text)
+      li.classList.remove("remote"); void li.offsetWidth; li.classList.add("remote") // restart the flash
+    }
     renderMarks()
   }
+  known.set(id, text)
   afterChange()
 }
 function dropLine(li) { li.remove(); scheduleLayout(); renderMarks(); afterChange() }
