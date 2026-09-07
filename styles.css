@@ -142,9 +142,11 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 .nav a.sel { color: var(--text-primary); }
 .session { margin-left: auto; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
 .session .who { color: var(--text-primary); font-family: var(--mono); font-size: 12px; }
-/* Chrome that repeats on every screen is a line icon: the theme, by the session. */
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 6px; color: var(--text-secondary); }
-.icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Chrome that repeats on every screen is a line icon, no box — the guide's
+   theme button as docs.html draws it; the icon shows the state you are in. */
+.icon-btn { display: flex; padding: 6px; background: none; border: none; color: var(--text-secondary); }
+.icon-btn:hover:not(:disabled) { color: var(--text-primary); border-color: transparent; }
+.icon-btn svg { width: 16px; height: 16px; }
 .icon-moon, .icon-system { display: none; }
 :root[data-pref="dark"] .icon-sun { display: none; }
 :root[data-pref="dark"] .icon-moon { display: block; }
