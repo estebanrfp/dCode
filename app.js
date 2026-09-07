@@ -444,6 +444,13 @@ function createLine(id, { repo, branch, text, order }) {
   })
   ta.addEventListener("keydown", async (e) => {
     if (allSelected) return // buffer-selection mode: the document handles keys
+    if (e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); extendRange(li, e.key === "ArrowUp" ? -1 : 1); return }
+    if (range) { // whole lines selected: Backspace and Delete take them, Escape lets go, the clipboard shortcuts reach the document, anything else is the caret again
+      if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); await deleteRange(); return }
+      if (e.key === "Escape") { e.preventDefault(); setRange(null); return }
+      if (e.key === "Shift" || e.metaKey || e.ctrlKey) return
+      setRange(null)
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a" && ta.selectionStart === 0 && ta.selectionEnd === ta.value.length) {
       e.preventDefault(); setAllSelected(true); return // the second Ctrl/Cmd+A: the whole buffer
     }
@@ -464,6 +471,7 @@ function createLine(id, { repo, branch, text, order }) {
   // its own node. The first line joins the text left of the caret, the last
   // the text right of it, and the caret lands at the end of what was pasted.
   ta.addEventListener("paste", async (e) => {
+    if (range) return // whole lines selected: the document replaces them
     const pasted = e.clipboardData?.getData("text/plain") ?? ""
     if (!pasted.includes("\n")) return
     e.preventDefault()
@@ -523,6 +531,7 @@ function dropLine(li) { li.remove(); scheduleLayout(); renderMarks(); afterChang
  * for the views. The tag lines themselves are HTML.
  */
 function relayout() {
+  paintRange() // a line that arrived or left under the selection
   const list = [...buffer().children]
   const seen = { html: 0, css: 0, js: 0 }
   let longest = 60, state = "html"
@@ -590,19 +599,89 @@ const download = (html, name) => {
 }
 const fileName = (repo, suffix = "") => `${repo?.value.name ?? "index"}${suffix}.html`
 
+// ── Whole-line selection: Shift+↑/↓, or the line numbers ────────────────────
+// A line is a node, so a selection that crosses lines is a set of nodes: the
+// lines between an anchor and a head, in order, the ones the view hides aside.
+// Copy joins their texts; cut and Backspace remove the nodes; a paste replaces
+// them — the first line keeps its node and takes the first pasted line, the
+// rest are removed, extra lines are minted between the first and whatever
+// follows. Every step is the same put or remove the caret makes, so the other
+// peers see it line by line, live, under their own carets. The caret stays in
+// the anchor line, which is what the room sees of you meanwhile.
+let range = null // { anchor, head }: line ids
+const rangeSet = () => {
+  if (!range) return new Set()
+  const a = $(range.anchor), h = $(range.head)
+  if (!a || !h) { range = null; return new Set() } // an end went away under a remote edit: nothing is selected
+  const list = [...buffer().children], i = list.indexOf(a), j = list.indexOf(h)
+  return new Set(list.slice(Math.min(i, j), Math.max(i, j) + 1).filter(shown))
+}
+const paintRange = () => { const set = rangeSet(); for (const li of buffer()?.children ?? []) li.classList.toggle("sel", set.has(li)) }
+const setRange = (r) => { range = r; paintRange() }
+const rangeLines = () => [...rangeSet()]
+const rangeText = () => rangeLines().map((li) => fieldOf(li).value).join("\n")
+const extendRange = (li, dir) => {
+  const from = (range && $(range.head)) ?? li
+  let next = from
+  do next = dir < 0 ? next.previousElementSibling : next.nextElementSibling; while (isLine(next) && !shown(next))
+  setRange({ anchor: range?.anchor ?? li.id, head: isLine(next) ? next.id : from.id })
+}
+async function deleteRange() {
+  const sel = rangeLines(); setRange(null); if (!sel.length) return
+  if (![...buffer().children].some((li) => !sel.includes(li))) return replaceRange(sel, "") // the last lines standing: the first stays, empty
+  const landing = sel.at(-1).nextElementSibling ?? sel[0].previousElementSibling
+  for (const li of sel) { cancelSave(li.id); dropLine(li) }
+  if (isLine(landing)) caretTo(landing, 0)
+  await Promise.all(sel.map((li) => db.remove(li.id)))
+}
+async function replaceRange(sel, text) {
+  setRange(null); if (!sel.length) return
+  const [first, ...rest] = sel, parts = text.split("\n"), after = sel.at(-1).nextElementSibling
+  const nextOrder = isLine(after) ? orderOf(after) : undefined
+  for (const li of rest) { cancelSave(li.id); dropLine(li) }
+  cancelSave(first.id); fieldOf(first).value = parts[0]; highlight(first); scheduleLayout(); afterChange()
+  const ops = [putLine(first.dataset.repo, first.dataset.branch, parts[0], orderOf(first), first.id), ...rest.map((li) => db.remove(li.id))]
+  if (parts.length === 1) caretTo(first, parts[0].length)
+  else {
+    const keys = keysBetween(orderOf(first), nextOrder, parts.length - 1)
+    for (let i = 1; i < parts.length - 1; i++) ops.push(putHere(parts[i], keys[i - 1]))
+    focusNextPos = parts.at(-1).length; focusNextId = await putHere(parts.at(-1), keys.at(-1))
+    caretTo($(focusNextId), focusNextPos)
+  }
+  await Promise.all(ops)
+}
+// The line numbers select whole lines: click one, then Shift+click or drag to another.
+let numberDrag = false
+document.addEventListener("pointerdown", (e) => {
+  setAllSelected(false)
+  const li = e.target.closest?.(".ln")?.closest(".line")
+  if (!li) { setRange(null); return }
+  e.preventDefault(); numberDrag = true // the focus stays in the buffer: the anchor line takes it
+  if (e.shiftKey && range) setRange({ anchor: range.anchor, head: li.id })
+  else { setRange({ anchor: li.id, head: li.id }); caretTo(li, 0) }
+})
+document.addEventListener("pointerover", (e) => { const li = numberDrag && range && e.target.closest?.(".ln")?.closest(".line"); if (li && li.id !== range.head) setRange({ anchor: range.anchor, head: li.id }) })
+document.addEventListener("pointerup", () => { numberDrag = false })
+
 // ── Whole-buffer selection: Ctrl/Cmd+A twice ────────────────────────────────
 let allSelected = false
-const setAllSelected = (on) => { allSelected = on; buffer()?.classList.toggle("all-selected", on) }
-document.addEventListener("copy", (e) => { if (!allSelected) return; e.preventDefault(); e.clipboardData.setData("text/plain", domText()) })
-document.addEventListener("cut", (e) => { if (!allSelected) return; e.preventDefault(); e.clipboardData.setData("text/plain", domText()); setAllSelected(false); applyText(current.branch, "") })
-document.addEventListener("paste", (e) => { if (!allSelected) return; e.preventDefault(); setAllSelected(false); applyText(current.branch, (e.clipboardData?.getData("text/plain") ?? "").replace(/\r/g, "")) })
+const setAllSelected = (on) => { allSelected = on; if (on) setRange(null); buffer()?.classList.toggle("all-selected", on) }
+document.addEventListener("copy", (e) => { const text = allSelected ? domText() : range ? rangeText() : null; if (text === null) return; e.preventDefault(); e.clipboardData.setData("text/plain", text) })
+document.addEventListener("cut", (e) => {
+  if (allSelected) { e.preventDefault(); e.clipboardData.setData("text/plain", domText()); setAllSelected(false); applyText(current.branch, ""); return }
+  if (range) { e.preventDefault(); e.clipboardData.setData("text/plain", rangeText()); deleteRange() }
+})
+document.addEventListener("paste", (e) => {
+  const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r/g, "")
+  if (allSelected) { e.preventDefault(); setAllSelected(false); applyText(current.branch, text); return }
+  if (range) { e.preventDefault(); replaceRange(rangeLines(), text) }
+})
 document.addEventListener("keydown", (e) => {
   if (!allSelected) return
   if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); setAllSelected(false); applyText(current.branch, "") }
   else if (e.key === "Escape") setAllSelected(false)
   else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) setAllSelected(false)
 })
-document.addEventListener("pointerdown", () => setAllSelected(false))
 
 // ── Awareness + live typing: ONE ephemeral channel, two kinds ───────────────
 // Channel traffic never touches the database. 'caret' carries where you are;

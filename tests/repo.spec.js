@@ -177,3 +177,68 @@ test("the buffer is the block editor for code: two people on two lines, Enter sp
   await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES)
   await alice.close(); await bob.close()
 })
+
+test("whole lines: Shift+↓ selects a range and the line numbers select another; copied as text, removed as nodes, replaced by a paste — on both peers", async ({ browser }) => {
+  const room = freshRoom("lines")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "alice"); await loginAs(bob, "bob")
+  await connected(alice); await connected(bob)
+  const { repo } = await createRepo(alice, "ranges")
+  await go(bob, `#/r/${repo}`)
+  await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES)
+  const selected = (page) => page.locator("#buffer .line.sel")
+  const selectedText = (page) => selected(page).locator("textarea").evaluateAll((els) => els.map((e) => e.value))
+
+  // Shift+↓ from the caret's line: whole lines, this one and the next, then more. Copy joins them.
+  const main = await lineWith(alice.page, "<main>")
+  await main.click()
+  await alice.page.keyboard.press("Shift+ArrowDown")
+  await expect(selected(alice.page)).toHaveCount(2)
+  await alice.page.keyboard.press("Shift+ArrowDown"); await alice.page.keyboard.press("Shift+ArrowDown")
+  await expect(selected(alice.page)).toHaveCount(4)
+  expect(await selectedText(alice.page)).toEqual(["<main>", "  <h1>Hello from dCode</h1>", "  <p>This page is one commit. Edit it, commit, and run any version from the timeline.</p>", '  <button id="count">Clicked 0 times</button>'])
+  const copied = await alice.page.evaluate(() => { const clipboardData = new DataTransfer(); document.dispatchEvent(new ClipboardEvent("copy", { clipboardData, bubbles: true, cancelable: true })); return clipboardData.getData("text/plain") })
+  expect(copied.split("\n")).toHaveLength(4)
+  expect(copied).toContain("<main>\n  <h1>Hello from dCode</h1>")
+  await alice.page.keyboard.press("Shift+ArrowUp") // the head comes back one line
+  await expect(selected(alice.page)).toHaveCount(3)
+
+  // Backspace removes the selected nodes: gone on both peers, the caret on the line that followed.
+  await alice.page.keyboard.press("Backspace")
+  await expect(selected(alice.page)).toHaveCount(0)
+  await expect(lines(alice.page)).toHaveCount(TEMPLATE_LINES - 3)
+  await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES - 3)
+  await expect.poll(() => lineIndex(bob.page, "Hello from dCode")).toBe(-1)
+  await expect(alice.page.locator("#buffer .line:focus-within textarea")).toHaveValue('  <button id="count">Clicked 0 times</button>')
+
+  // The line numbers: click one, Shift+click another. A paste replaces the range — the first
+  // line keeps its node, the rest go, extra lines are minted between — and the other peer follows.
+  await alice.page.locator("#buffer .line").nth(4).locator(".ln").click()
+  await expect(selected(alice.page)).toHaveCount(1)
+  await alice.page.locator("#buffer .line").nth(6).locator(".ln").click({ modifiers: ["Shift"] })
+  await expect(selected(alice.page)).toHaveCount(3)
+  expect(await selectedText(alice.page)).toEqual(["<title>Hello, dCode</title>", "<style>", "  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0d0f12; color: #e8eaed; font: 18px system-ui, sans-serif; text-align: center; }"])
+  const fifthId = await alice.page.locator("#buffer .line").nth(4).getAttribute("id")
+  await alice.page.evaluate((t) => {
+    const clipboardData = new DataTransfer(); clipboardData.setData("text/plain", t)
+    document.activeElement.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+  }, "<title>Ranges</title>\n<style>")
+  await expect(selected(alice.page)).toHaveCount(0)
+  await expect(lines(alice.page)).toHaveCount(TEMPLATE_LINES - 4)
+  await expect(alice.page.locator("#buffer .line").nth(4)).toHaveAttribute("id", fifthId) // the first line kept its node
+  await expect(alice.page.locator("#buffer .line").nth(4).locator("textarea")).toHaveValue("<title>Ranges</title>")
+  await expect(alice.page.locator("#buffer .line").nth(5).locator("textarea")).toHaveValue("<style>")
+  await expect(alice.page.locator("#buffer .line").nth(6).locator("textarea")).toHaveValue(/^  button \{/)
+  await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES - 4)
+  await seesLine(bob, "<title>Ranges</title>")
+  await expect(bob.page.locator("#buffer .line").nth(4)).toHaveAttribute("id", fifthId)
+  await expect.poll(() => lineIndex(bob.page, "body { margin: 0")).toBe(-1)
+
+  // Escape lets go; typing afterwards is the caret again, and the buffer still runs.
+  await alice.page.locator("#buffer .line").nth(2).locator(".ln").click()
+  await expect(selected(alice.page)).toHaveCount(1)
+  await alice.page.keyboard.press("Escape")
+  await expect(selected(alice.page)).toHaveCount(0)
+  await expect(preview(alice.page)).toContainText("Clicked 0 times")
+  await alice.close(); await bob.close()
+})

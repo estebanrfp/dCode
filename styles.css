@@ -315,7 +315,9 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .remote-sel { border-radius: 2px; }
 .remote-caret { position: relative; border-left: 2px solid; margin-left: -1px; }
 .caret-label { position: absolute; top: -12px; left: -2px; padding: 0 4px; border-radius: 3px; font: 600 9px/1.3 var(--mono); color: var(--bg-primary); white-space: nowrap; user-select: none; }
-.all-selected .line textarea { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.all-selected .line textarea, .line.sel textarea { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.line.sel .ln { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 22%, var(--bg-primary)); }
+.line .ln:hover { color: var(--text-secondary); } /* the numbers select whole lines */
 
 /* The right: the running page, then the dock */
 .right { display: flex; flex-direction: column; overflow: hidden; }
