@@ -24,10 +24,10 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   await seesLine(alice, "Hello from Bob") // the shared buffer, on Alice's screen too
   await commit(bob, "Greet from Bob")
   await expect(bob.page.locator("#branch-select")).toHaveValue(/./)
-  await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/bob\/main/)
+  await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
   await expect(branchRows(bob.page)).toHaveCount(2)
   await expect(branchRows(alice.page)).toHaveCount(2)
-  await expect(branchRows(alice.page).nth(1)).toContainText("bob/main")
+  await expect(branchRows(alice.page).nth(1)).toContainText("Bob/main")
   await expect(rows(alice.page)).toHaveCount(2)
   await expect(head(alice.page)).toHaveText(mainHead)
   // Main's buffer still holds Bob's edit, uncommitted; Alice discards it and main is clean.
@@ -83,7 +83,7 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   await expect(preview(alice.page)).not.toContainText("Third from Bob")
   await tab(alice, "history")
   await expect(rows(alice.page).nth(1)).toContainText("main") // the chips: main sits on the second commit, bob/main on the third
-  await expect(rows(alice.page).first()).toContainText("bob/main")
+  await expect(rows(alice.page).first()).toContainText("Bob/main")
 
   await assertTransport(bob)
   await alice.close(); await bob.close()
@@ -98,7 +98,7 @@ test("a collaborator granted write moves the head directly; revoked, they are ba
   await tab(alice, "branches")
   await alice.page.locator('#collab-form [name="address"]').fill(ADDR.bob)
   await alice.page.locator('#collab-form button[type="submit"]').click()
-  await expect(alice.page.locator("#collabs li")).toContainText("bob")
+  await expect(alice.page.locator("#collabs li")).toContainText("Bob")
   await expect(alice.page.locator("#collabs li")).toContainText("write")
 
   await go(bob, `#/r/${repo}`)

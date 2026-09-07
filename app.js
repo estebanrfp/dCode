@@ -766,7 +766,7 @@ const newPage = () => (me
 const door = $("identity-modal")
 const el = { mnemonic: $("mnemonic-input"), clip: $("mnemonic-clip"), generate: $("generate-btn"), passkeyProtect: $("passkey-protect-btn"), passkeyLogin: $("passkey-login-btn"), demo: $("demo-logins"), warning: $("phrase-warning") }
 const show = (node, visible) => node.classList.toggle("hidden", !visible)
-el.demo.innerHTML = DEMO_IDENTITIES.map((i) => `<button type="button" class="ghost demo-login" data-address="${esc(i.address)}">${i.emoji} ${esc(i.name)}${eqAddr(i.address, AUTHORITY) ? " (the authority)" : ""} (demo)</button>`).join("")
+el.demo.innerHTML = DEMO_IDENTITIES.map((i) => `<button type="button" class="ghost demo-login" data-address="${esc(i.address)}">${i.emoji} ${esc(i.name)} (demo)</button>`).join("") // the guide's demo shortcut, one per identity the demo uses
 const autoGrow = () => { const f = el.mnemonic; f.style.height = "auto"; const borders = f.offsetHeight - f.clientHeight; f.style.height = `${f.scrollHeight + borders}px` }
 const syncClipAffordance = () => show(el.clip, !!el.mnemonic.value.trim())
 const renderDoor = ({ isActive, hasVolatileIdentity, hasWebAuthnHardwareRegistration, isWebAuthnProtected }) => {

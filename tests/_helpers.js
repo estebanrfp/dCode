@@ -8,7 +8,7 @@ import { expect } from "@playwright/test"
 export const RELAY = process.env.DCODE_RELAY
 export const BASE = "http://localhost:5805"
 export const ADDR = {
-  constitution: "0xbfDe0eCEC5332Fd86D2570085571D6051Df098dA",
+  superadmin: "0xbfDe0eCEC5332Fd86D2570085571D6051Df098dA",
   alice: "0x3546D4BA0ac3bfDea3F1511F82a078DDdb3F4931",
   bob: "0x8089C0480139d85D82c1E20eeF08a77EF8cD7DEC",
 }
@@ -62,8 +62,8 @@ export const rejoin = async (v, hash = "#/") => { v.relay = RELAY; await go(v, h
 /** One-click demo identity. */
 export const loginAs = async (v, name) => {
   await go(v, "#/login")
-  await v.page.locator(`.demo-login:has-text("${name}")`).click()
-  await expect(v.page.locator("#session-addr")).toContainText(name)
+  await v.page.locator(`.demo-login:has-text("${name}")`).click() // the guide's canonical identities: Superadmin, Alice, Bob
+  await expect(v.page.locator("#session-addr")).toContainText(name, { ignoreCase: true })
   v.name = name; v.address = ADDR[name]
 }
 export const connected = (v) => expect(v.page.locator("#presence")).toContainText(/[1-9]\d* peer/)

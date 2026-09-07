@@ -18,10 +18,10 @@ test("a phrase session is protected with a passkey from the identity view; the p
   await page.locator("#protect-btn").click()
   await expect(page.locator("#unlocked-by")).toHaveText("passkey")
   await expect(page.locator("#protect-btn")).toHaveCount(0)
-  await expect(v.page.locator("#session-addr")).toContainText("alice")
+  await expect(v.page.locator("#session-addr")).toContainText("Alice")
 
   await v.page.reload()
-  await expect(v.page.locator("#session-addr")).toContainText("alice") // resumed silently, no phrase typed, no door
+  await expect(v.page.locator("#session-addr")).toContainText("Alice") // resumed silently, no phrase typed, no door
   await expect(door(v.page)).not.toHaveAttribute("open", "")
   await v.page.locator("#session-addr").click()
   await expect(v.page.locator("#unlocked-by")).toHaveText("passkey")
@@ -30,7 +30,7 @@ test("a phrase session is protected with a passkey from the identity view; the p
   await expect(door(v.page)).toHaveAttribute("open", "")
   await expect(v.page.locator("#passkey-login-btn")).toBeVisible() // this browser holds a registration
   await v.page.locator("#passkey-login-btn").click()
-  await expect(v.page.locator("#session-addr")).toContainText("alice")
+  await expect(v.page.locator("#session-addr")).toContainText("Alice")
   await expect(door(v.page)).not.toHaveAttribute("open", "")
   await v.close()
 })

@@ -33,21 +33,21 @@
 // of the demo can sign in with one click — the canonical set of the GenosDB
 // design guide. A production deployment ships no mnemonic in its source.
 export const SUPERADMIN = {
-  name: "constitution", emoji: "🛡️",
+  name: "Superadmin", emoji: "🛡️",
   mnemonic: "panic now afford carbon donate lecture drift excite collect essay stuff prosper",
   address: "0xbfDe0eCEC5332Fd86D2570085571D6051Df098dA",
 }
 export const ALICE = {
-  name: "alice", emoji: "👩‍🦰",
+  name: "Alice", emoji: "👩‍🦰",
   mnemonic: "prosper fossil kitten crisp view spread jeans shield prosper myself awake usage",
   address: "0x3546D4BA0ac3bfDea3F1511F82a078DDdb3F4931",
 }
 export const BOB = {
-  name: "bob", emoji: "👨‍🦱",
+  name: "Bob", emoji: "👨‍🦱",
   mnemonic: "salmon grant recall neutral banner glow pluck divert cactus theory rally ship captain shaft cactus",
   address: "0x8089C0480139d85D82c1E20eeF08a77EF8cD7DEC",
 }
-export const DEMO_IDENTITIES = [ALICE, BOB, SUPERADMIN]
+export const DEMO_IDENTITIES = [SUPERADMIN, ALICE, BOB]
 
 export const CONSTITUTION = {
   /** The one address whose signature makes a role valid. Its only power. */

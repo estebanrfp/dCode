@@ -21,7 +21,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await expect(rows(bob.page)).toHaveCount(1)
   await setLine(bob, "Clicked 0 times", '  <button id="count">Pressed 0 times</button>')
   await commit(bob, "Bob edits the button")
-  await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/bob\/main/)
+  await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
   await expect(rows(alice.page)).toHaveCount(2)
   await expect(alice.page.locator("#dirty")).toBeVisible()
   await alice.page.locator("#discard").click()
@@ -39,7 +39,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await expect(alice.page.locator("#notice")).toContainText("no conflicts")
   await expect(rows(alice.page)).toHaveCount(4)
   await tab(alice, "history")
-  await expect(rows(alice.page).first()).toContainText("Merge bob/main into main")
+  await expect(rows(alice.page).first()).toContainText("Merge Bob/main into main")
   await expect(alice.page.locator("#commit-panel .meta")).toContainText("parents")
   await expect(prRows(alice.page).first()).toContainText("merged")
   await expect(prRows(bob.page).first()).toContainText("merged")
@@ -70,7 +70,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await seesLine(alice, ">>>>>>> theirs")
   await seesLine(bob, "<<<<<<< ours") // the buffer is shared: the markers are on Bob's screen too
   await expect(alice.page.locator("#merge-banner")).toBeVisible()
-  await expect(alice.page.locator("#message")).toHaveValue("Merge bob/main into main")
+  await expect(alice.page.locator("#message")).toHaveValue("Merge Bob/main into main")
   // Markers still in the file: the commit is refused, in words.
   await alice.page.locator("#commit-btn").click()
   await expect(alice.page.locator("#notice")).toContainText("Conflict markers are still in the file")
@@ -91,7 +91,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await expect(head(bob.page)).toHaveText(await head(alice.page).textContent()) // Bob, on main, sees the merge as the head
   await expect(bob.page.locator("#dirty")).toBeHidden()
   await tab(bob, "branches")
-  await expect(bob.page.locator('#branches li:has-text("bob/main")')).toContainText(bobHeading) // his own branch stays where he left it
+  await expect(bob.page.locator('#branches li:has-text("Bob/main")')).toContainText(bobHeading) // his own branch stays where he left it
   await expect(prRows(bob.page).filter({ hasText: "Bob's heading" })).toContainText("merged")
   await alice.close(); await bob.close()
 })

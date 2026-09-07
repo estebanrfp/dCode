@@ -10,7 +10,7 @@ import { ADDR, commit, connected, createRepo, freshRoom, go, inStore, lines, log
 test("a private repository is sealed for everyone but its members; a grant opens it, a revocation turns the key, and the owner reads it back after a reload", async ({ browser }) => {
   const room = freshRoom("private")
   const alice = await visitor(browser, room), bob = await visitor(browser, room), authority = await visitor(browser, room)
-  await loginAs(alice, "alice"); await loginAs(bob, "bob"); await loginAs(authority, "constitution")
+  await loginAs(alice, "alice"); await loginAs(bob, "bob"); await loginAs(authority, "superadmin")
   await connected(alice); await connected(bob); await connected(authority)
 
   // The owner: a repository like any other, with a lock on it and a vault behind it.
@@ -37,9 +37,9 @@ test("a private repository is sealed for everyone but its members; a grant opens
   await expect(bob.page.locator(".locked")).toBeVisible()
   await alice.page.locator('#member-form [name="address"]').fill(ADDR.bob)
   await alice.page.locator('#member-form button[type="submit"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("bob holds the key now")
+  await expect(alice.page.locator("#notice")).toContainText("Bob holds the key now")
   await expect(alice.page.locator("#members li")).toHaveCount(2)
-  await expect(alice.page.locator("#members li").nth(1)).toContainText("bob")
+  await expect(alice.page.locator("#members li").nth(1)).toContainText("Bob")
   await expect(bob.page.locator("#buffer")).toBeVisible()
   await seesLine(bob, "Secret from Alice")
   await expect(rows(bob.page)).toHaveCount(2)
