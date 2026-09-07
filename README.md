@@ -4,6 +4,8 @@ A shared code editor and a code host in one page, for projects that are **one HT
 
 **Live:** [estebanrfp.github.io/dCode](https://estebanrfp.github.io/dCode/) · **The article:** [A GitHub With No Server](https://genosdb.com/dcode-p2p-collaborative-code-editor-no-server) · **Engine:** [GenosDB](https://github.com/estebanrfp/gdb) — if this is interesting, [star the engine ★](https://github.com/estebanrfp/gdb): that is where the work is.
 
+![dCode with two peers: on the left the shared buffer with line numbers and syntax colours, Bob's named caret on line 15, the HTML · CSS · JS views above it; on the right the page running as it is typed, and under it the History tab with the commit graph and the diff of the selected commit.](https://cdn.jsdelivr.net/gh/estebanrfp/gdb@main/assets/dcode-editor.png)
+
 Plain HTML, CSS and JavaScript. No framework, no build step, no backend. Four files.
 
 ## What is different from a code host
