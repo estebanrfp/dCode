@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908h")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908i")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // The URL says where you are and nothing else: no feature ever writes to it.
 // `?room=` opens a private sandbox of the same site — what the suite gives each
@@ -90,6 +90,11 @@ const prStatus = (pr) => {
   return from && from.value.head !== pr.value.commit ? "open, behind" : "open"
 }
 const defaultBranch = (repo, branches) => branches.find((b) => eqAddr(b.value.owner, repo.value.owner) && b.value.name === "main") ?? branches.find((b) => eqAddr(b.value.owner, repo.value.owner)) ?? branches[0] ?? null
+/** The address of a place in a repository. A branch that is the repository's default is where you land anyway, so it stays out of the address; a commit needs its branch beside it, since the segments are read by position. */
+const at = (repoId, branchId, commitId) => {
+  const repo = nodes.get(repoId), implied = !commitId && repo && defaultBranch(repo, branchesOf(repoId))?.id === branchId
+  return `#/r/${repoId}${branchId && !implied ? `/${branchId}` : ""}${commitId ? `/${commitId}` : ""}`
+}
 
 // ── Text: a diff by lines and a three-way merge, enough for one file ────────
 /** Longest common subsequence of two line arrays, as matched index pairs. */
@@ -339,7 +344,7 @@ const mergePR = async (pr) => {
   // The conflicts go to the target's shared buffer, marked; the commit made from there is the merge.
   pendingMerge.set(into.id, { parents: [theirs.id], message })
   await applyText(into.id, text)
-  location.hash = `#/r/${repo.id}/${into.id}`
+  location.hash = at(repo.id, into.id)
   render()
   notice(`${plural(conflicts, "conflict")}. Resolve the marked lines in the editor and commit: that commit will be the merge.`)
 }
@@ -902,7 +907,7 @@ const showView = (name) => {
 const renderBranches = (repo, branches, branch, commits, fromId) => {
   const counts = new Map()
   for (const c of commits) counts.set(c.value.branch, (counts.get(c.value.branch) ?? 0) + 1)
-  $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="#/r/${esc(repo.id)}/${esc(b.id)}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span>${eqAddr(b.value.owner, me) && b.id !== defaultBranch(repo, branches)?.id ? `<button class="small ghost" data-act="delete-branch" data-branch="${esc(b.id)}" title="Delete this branch: its buffer goes, its commits stay">Delete</button>` : ""}</li>`).join("") || `<li class="dim">no branches</li>`
+  $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="${esc(at(repo.id, b.id))}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span>${eqAddr(b.value.owner, me) && b.id !== defaultBranch(repo, branches)?.id ? `<button class="small ghost" data-act="delete-branch" data-branch="${esc(b.id)}" title="Delete this branch: its buffer goes, its commits stay">Delete</button>` : ""}</li>`).join("") || `<li class="dim">no branches</li>`
   $("branch-form-box").innerHTML = me && fromId ? `<form id="branch-form" class="row"><input type="text" name="name" placeholder="new branch" pattern="[A-Za-z0-9._\\-]{1,40}" required autocomplete="off"><button type="submit" class="small">Branch from ${esc(short(fromId))}</button></form>` : ""
   const select = $("branch-select")
   select.innerHTML = branches.map((b) => `<option value="${esc(b.id)}"${b.id === branch?.id ? " selected" : ""}>${esc(branchLabel(repo, b))}${eqAddr(b.value.owner, me) ? "" : ` · ${esc(nameOf(b.value.owner))}`}</option>`).join("")
@@ -1078,7 +1083,7 @@ document.addEventListener("keydown", (event) => {
 // ── Events ──────────────────────────────────────────────────────────────────
 document.addEventListener("click", async (e) => {
   const li = e.target.closest("li[data-commit]")
-  if (li) { const r = route(); location.hash = `#/r/${r.repo}/${$("main").dataset.branch}/${li.dataset.commit}`; return }
+  if (li) { const r = route(); location.hash = at(r.repo, $("main").dataset.branch, li.dataset.commit); return }
   if (e.target === buffer() && !buffer().children.length && me && current) { await insertAfter(null); return } // an empty buffer: click to start a line (not before its branch is here)
   if (e.target === buffer() || e.target.classList?.contains("edit-panel")) { // the space under the last line is the editor too: the caret goes to its end
     const last = [...buffer()?.children ?? []].filter(shown).at(-1); if (last) caretTo(last, fieldOf(last).value.length); return
@@ -1170,8 +1175,8 @@ document.addEventListener("submit", async (e) => {
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
     if (f.id === "new-form") {
-      const { repo, branch } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
-      location.hash = `#/r/${repo}/${branch}`; return
+      const { repo } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
+      location.hash = `#/r/${repo}`; return // its `main` is the branch you land on: the address does not have to say so
     }
     const branch = currentBranch(); if (!branch) return
     const repo = nodes.get(branch.value.repo)
@@ -1196,7 +1201,7 @@ document.addEventListener("submit", async (e) => {
         f.reset(); notice(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`); runPreview(content, `${short(id)}, the head`); scheduleRender()
       } else {
         const fork = await forkAndCommit(branch, message, content)
-        f.reset(); location.hash = `#/r/${repo.id}/${fork.branch}`; notice(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
+        f.reset(); location.hash = at(repo.id, fork.branch); notice(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
       }
       return
     }
@@ -1204,7 +1209,7 @@ document.addEventListener("submit", async (e) => {
       const head = commitOf(route().commit)?.id ?? branch.value.head
       const id = await create({ type: "branch", repo: repo.id, name: field("name"), head })
       await seedLines(repo.id, id, contentOf(head))
-      location.hash = `#/r/${repo.id}/${id}`; return
+      location.hash = at(repo.id, id); return
     }
     if (f.id === "pr-form") {
       await create({ type: "pr", repo: repo.id, from: branch.id, into: field("into"), title: field("title"), commit: branch.value.head })
@@ -1217,7 +1222,7 @@ document.addEventListener("submit", async (e) => {
   } catch (err) { notice(err.message) }
 })
 document.addEventListener("change", (e) => {
-  if (e.target.id === "branch-select") { const r = route(); location.hash = `#/r/${r.repo}/${e.target.value}` }
+  if (e.target.id === "branch-select") { const r = route(); location.hash = at(r.repo, e.target.value) }
   if (e.target.id === "autorun" && e.target.checked) afterChange()
 })
 document.addEventListener("focusout", () => { if (dirtyWhileTyping) { dirtyWhileTyping = false; scheduleRender() } })
