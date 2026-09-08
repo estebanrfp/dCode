@@ -49,8 +49,8 @@ export function mountAgent(api) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault()
     const brief = input.value.trim(); if (!brief) return
-    const branch = api.currentBranch(); if (!branch) return api.notice("Open a repository first.")
-    if (!api.me()) return api.notice("Sign in first: the agent edits as you.")
+    const branch = api.currentBranch(); if (!branch) return api.toast("Open a repository first.")
+    if (!api.me()) return api.toast("Sign in first: the agent edits as you.")
     input.disabled = true
     try {
       prompt ??= await loadPrompt()
@@ -104,8 +104,8 @@ export function mountAgent(api) {
       if (held !== null) await decide(held, null)
       await place(existing.length) // whatever the buffer still held past the last anchor is gone
       input.value = ""
-      if (!changed) return api.notice("The agent left the file as it is.")
+      if (!changed) return api.toast("The agent left the file as it is.")
       api.commit(brief.slice(0, 120)) // what pressing Commit does: to your branch, or a fork of your own on someone else's
-    } catch (err) { api.notice(err.message) } finally { input.disabled = false; say(""); input.focus() }
+    } catch (err) { api.toast(err.message) } finally { input.disabled = false; say(""); input.focus() }
   })
 }

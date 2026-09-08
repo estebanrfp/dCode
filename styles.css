@@ -185,7 +185,22 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 :root[data-pref="dark"] .icon-moon { display: block; }
 :root[data-pref="system"] .icon-sun { display: none; }
 :root[data-pref="system"] .icon-system { display: block; }
-.notice { flex: none; padding: var(--s2) var(--s4); background: color-mix(in srgb, var(--warn) 16%, var(--bg-primary)); color: var(--text-primary); font-size: 13px; border-bottom: 1px solid var(--border-subtle); }
+/* Toasts, the canonical component (design guide §6, as built in examples/acls.html).
+   Messages stack and never replace each other: in a peer-to-peer app a merge, a
+   grant or someone else's commit arrives without asking, and a single slot would
+   overwrite the confirmation you did ask for. The stack itself is the popover, so
+   it enters the top layer and paints above a modal dialog's ::backdrop. */
+.toast-stack { position: fixed; inset: auto var(--s4) var(--s4) auto; display: flex; flex-direction: column; gap: var(--s2); width: min(360px, calc(100vw - var(--s4) * 2)); margin: 0; padding: 0; background: none; border: none; overflow: visible; }
+.toast { display: flex; gap: var(--s3); padding: var(--s3) var(--s4); background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: 0 8px 24px rgb(0 0 0 / 45%); font-size: 13px; transition: opacity .25s, transform .25s; }
+.toast-icon { flex: 0 0 18px; text-align: center; font-size: 18px; line-height: 1; color: var(--text-tertiary); }
+.toast-text { flex: 1; min-width: 0; }
+.toast.success { border-left-color: var(--ok); }
+.toast.success .toast-icon { color: var(--ok); }
+.toast.error { border-left-color: var(--danger); }
+.toast.error .toast-icon { color: var(--danger); }
+.toast:not(:last-child) { opacity: .6; }
+.toast.out { opacity: 0; transform: translateX(20px); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: var(--s4); overflow: auto; }
 .main.full { padding: 0; overflow: hidden; }
 .loading { color: var(--text-secondary); }

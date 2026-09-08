@@ -69,7 +69,7 @@ test("delete my repositories, for testing: what is yours goes on every peer; a v
   await alice.page.locator('[data-act="delete-mine"]').click()
   await expect(alice.page.locator('[data-act="delete-mine"]')).toHaveText("Delete them, really?")
   await alice.page.locator('[data-act="delete-mine"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("Your repositories are gone")
+  await expect(alice.page.locator("#toasts")).toContainText("Your repositories are gone")
   await expect(alice.page.locator(".repos li")).toHaveCount(0)
   await expect(bob.page.locator(".repos li")).toHaveCount(0) // gone on the other side of the wire
   await expect(alice.page).toHaveURL(new RegExp(`room=${room}`)) // the URL never changes: the room is not the user's business

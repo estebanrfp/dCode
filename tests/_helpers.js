@@ -126,8 +126,9 @@ export const createRepo = async (v, name, description = "", { isPrivate = false 
 export const commit = async (v, message) => {
   await v.page.locator("#message").fill(message)
   await v.page.locator("#commit-btn").click()
-  await expect(v.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7})/)
-  return (await v.page.locator("#notice").textContent()).match(/Committed ([0-9a-f]{7})/)[1]
+  const newest = v.page.locator("#toasts .toast").last() // messages stack: the one just raised is the last
+  await expect(newest).toContainText(/Committed ([0-9a-f]{7})/)
+  return (await newest.textContent()).match(/Committed ([0-9a-f]{7})/)[1]
 }
 
 /**

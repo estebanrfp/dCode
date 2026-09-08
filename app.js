@@ -204,8 +204,30 @@ const ago = (at) => {
 }
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`
 const say = (id, text) => { const el = $(id); if (el) el.textContent = text }
-let noticeTimer
-const notice = (text) => { const el = $("notice"); el.textContent = text; el.classList.remove("hidden"); clearTimeout(noticeTimer); noticeTimer = setTimeout(() => el.classList.add("hidden"), 7000) }
+const TOAST_ICONS = { info: "ⓘ", success: "✓", error: "✕" }
+/** Events belong here; what is TRUE stays on the page — the repository bar, the timeline, the buffer. */
+const toast = (message, kind = "info") => {
+  const item = document.createElement("div")
+  item.className = `toast ${kind}`
+  const icon = document.createElement("span")
+  icon.className = "toast-icon"
+  icon.textContent = TOAST_ICONS[kind] ?? TOAST_ICONS.info
+  icon.setAttribute("aria-hidden", "true") // the text alone is the message
+  const text = document.createElement("span")
+  text.className = "toast-text"
+  text.textContent = message
+  item.append(icon, text)
+  $("toasts").append(item)
+  while ($("toasts").children.length > 3) $("toasts").firstElementChild.remove() // three at a time, rotating: more than that is scanned, not read
+  // Re-enter the top layer on every toast: order there is order of entry, so a
+  // dialog opened later would sit above the stack.
+  if ($("toasts").matches(":popover-open")) $("toasts").hidePopover()
+  $("toasts").showPopover?.()
+  setTimeout(() => {
+    item.classList.add("out")
+    item.addEventListener("transitionend", () => { item.remove(); if (!$("toasts").children.length) $("toasts").hidePopover?.() }, { once: true })
+  }, 3200)
+}
 const pendingMerge = new Map() // branch id → { parents, message } of a merge waiting for its conflicts to be resolved
 
 const TEMPLATE = `<!DOCTYPE html>
@@ -320,27 +342,27 @@ const applyText = async (branchId, text) => {
 }
 const mergePR = async (pr) => {
   const repo = nodes.get(pr.value.repo), into = nodes.get(pr.value.into), from = nodes.get(pr.value.from), theirs = commitOf(pr.value.commit)
-  if (!repo || !into || !from || !theirs) return notice("The pull request's branch or commit has not synced here yet.")
-  if (!canWriteBranch(into)) return notice(`Only the owner of ${branchLabel(repo, into)} can merge into it.`)
+  if (!repo || !into || !from || !theirs) return toast("The pull request's branch or commit has not synced here yet.", "error")
+  if (!canWriteBranch(into)) return toast(`Only the owner of ${branchLabel(repo, into)} can merge into it.`, "error")
   const ours = commitOf(into.value.head)
   if (!ours || isAncestor(ours.id, theirs.id)) {
     await patch(into.id, { head: theirs.id })
     await applyText(into.id, theirs.value.content)
-    return notice(`Fast-forwarded ${branchLabel(repo, into)} to ${short(theirs.id)}.`)
+    return toast(`Fast-forwarded ${branchLabel(repo, into)} to ${short(theirs.id)}.`, "success")
   }
   const message = `Merge ${branchLabel(repo, from)} into ${branchLabel(repo, into)}`
   const { text, conflicts } = merge3(contentOf(mergeBase(ours.id, theirs.id)), ours.value.content, theirs.value.content)
   if (!conflicts) {
     const id = await commitTo(into, message, text, [theirs.id])
     await applyText(into.id, text)
-    return notice(`Merged as ${short(id)}: both sides' changes, no conflicts.`)
+    return toast(`Merged as ${short(id)}: both sides' changes, no conflicts.`, "success")
   }
   // The conflicts go to the target's shared buffer, marked; the commit made from there is the merge.
   pendingMerge.set(into.id, { parents: [theirs.id], message })
   await applyText(into.id, text)
   location.hash = at(repo.id, into.id)
   render()
-  notice(`${plural(conflicts, "conflict")}. Resolve the marked lines in the editor and commit: that commit will be the merge.`)
+  toast(`${plural(conflicts, "conflict")}. Resolve the marked lines in the editor and commit: that commit will be the merge.`, "error")
 }
 
 // ── The buffer: the block editor, for code ──────────────────────────────────
@@ -1097,7 +1119,7 @@ document.addEventListener("click", async (e) => {
       const { result } = await db.sm.get(repo.value.vault), hex = newKeyHex()   // and the repository key turns: a new one on the ring
       await db.sm.put({ ...result.value, keys: [hex, ...result.value.keys] }, repo.value.vault)
       keyRings.set(repo.id, [await importKey(hex), ...(keyRings.get(repo.id) ?? [])])
-      notice(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`)
+      toast(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`)
       renderMembers(repo); return
     }
     if (act === "edit-repo") {
@@ -1111,7 +1133,7 @@ document.addEventListener("click", async (e) => {
     if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(contentOf(c.id), fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
     if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
     if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) { runPreview(contentOf(c.id), `${short(c.id)} — ${c.value.message}`); showTab("preview") } return } // contentOf, never value.content: a sealed commit this session wrote keeps its text aside
-    if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, contentOf(c.id)); notice(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
+    if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, contentOf(c.id)); toast(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
     if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
@@ -1120,7 +1142,7 @@ document.addEventListener("click", async (e) => {
       const b = nodes.get(a.dataset.branch); if (!b) return
       const r = route(), standing = r.branch === b.id
       await Promise.all(linesOf(b.id).map((n) => db.remove(n.id))); await db.remove(b.id)
-      notice(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
+      toast(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
       if (standing) location.hash = `#/r/${b.value.repo}`; return
     }
     if (act === "delete-mine") { // testing, on the home page: what you own, removed as writes every peer accepts. `db.clear()` would wipe
@@ -1135,10 +1157,10 @@ document.addEventListener("click", async (e) => {
         if (r.value.vault) await db.sm.remove(r.value.vault).catch(() => {})
         await db.remove(r.id)
       }
-      notice("Your repositories are gone, on every peer. What others forked or committed of them is theirs and stays.")
+      toast("Your repositories are gone, on every peer. What others forked or committed of them is theirs and stays.")
       a.disabled = false; a.dataset.armed = ""; a.textContent = "Delete my repositories"; scheduleRender(); return
     }
-    if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
+    if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); toast(`Revoked ${nameOf(a.dataset.address)}.`, "success") } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
     if (a.id === "reset-btn") { // testing, in the door: this device's copy of the graph, gone. It is not a reset of the room and cannot be —
       // every other peer still holds what it holds and hands back whatever it has on the next connection. What lived only here does go,
@@ -1162,7 +1184,7 @@ document.addEventListener("click", async (e) => {
       try { if (!await db.sm.protectCurrentIdentityWithWebAuthn()) say(out, "Passkey registration cancelled.") } catch { say(out, "Could not register the passkey.") } return
     }
     if (a.id === "passkey-login-btn") { e.preventDefault(); try { if (!await db.sm.loginCurrentUserWithWebAuthn()) say("door-status", "Passkey sign-in cancelled.") } catch { say("door-status", "Could not sign in with the passkey.") } return }
-  } catch (err) { notice(err.message) }
+  } catch (err) { toast(err.message) }
 })
 
 document.addEventListener("submit", async (e) => {
@@ -1179,25 +1201,25 @@ document.addEventListener("submit", async (e) => {
     if (f.id === "member-form") { // an envelope on the vault: the engine wraps the key for an address that has signed in once
       const address = field("address")
       await db.sm.acls.grant(repo.value.vault, address, "read")
-      f.reset(); notice(`${nameOf(address)} holds the key now; their page opens on its own.`); renderMembers(repo); return
+      f.reset(); toast(`${nameOf(address)} holds the key now; their page opens on its own.`); renderMembers(repo); return
     }
     if (f.id === "repo-form") { // the repository node is the owner's: a rename is one write on it
       await patch(repo.id, { name: field("name"), description: field("description") })
-      f.classList.add("hidden"); notice("Repository updated."); scheduleRender(); return
+      f.classList.add("hidden"); toast("Repository updated.", "success"); scheduleRender(); return
     }
     if (f.id === "commit-form") {
       const message = field("message"); if (!message) return
       await flushSaves()
       const content = domText()
-      if (content === contentOf(branch.value.head) && !pendingMerge.has(branch.id)) return notice("Nothing to commit: the buffer is the head.")
-      if (pendingMerge.has(branch.id) && /^(<<<<<<<|=======|>>>>>>>)/m.test(content)) return notice("Conflict markers are still in the file.")
+      if (content === contentOf(branch.value.head) && !pendingMerge.has(branch.id)) return toast("Nothing to commit: the buffer is the head.")
+      if (pendingMerge.has(branch.id) && /^(<<<<<<<|=======|>>>>>>>)/m.test(content)) return toast("Conflict markers are still in the file.", "error")
       let id
       if (canWriteBranch(branch)) {
         id = await commitTo(branch, message, content, pendingMerge.get(branch.id)?.parents ?? []); pendingMerge.delete(branch.id)
-        f.reset(); notice(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`); runPreview(content, `${short(id)}, the head`); scheduleRender()
+        f.reset(); toast(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`, "success"); runPreview(content, `${short(id)}, the head`); scheduleRender()
       } else {
         const fork = await forkAndCommit(branch, message, content)
-        f.reset(); location.hash = at(repo.id, fork.branch); notice(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
+        f.reset(); location.hash = at(repo.id, fork.branch); toast(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
       }
       return
     }
@@ -1209,13 +1231,13 @@ document.addEventListener("submit", async (e) => {
     }
     if (f.id === "pr-form") {
       await create({ type: "pr", repo: repo.id, from: branch.id, into: field("into"), title: field("title"), commit: branch.value.head })
-      f.reset(); notice("Pull request opened. It is a node you own; the target's owner merges it."); return
+      f.reset(); toast("Pull request opened. It is a node you own; the target's owner merges it.", "success"); return
     }
     if (f.id === "collab-form") {
       await db.sm.acls.grant(branch.id, field("address"), "write")
-      f.reset(); notice(`${nameOf(field("address"))} can now move ${branchLabel(repo, branch)}.`); return
+      f.reset(); toast(`${nameOf(field("address"))} can now move ${branchLabel(repo, branch)}.`); return
     }
-  } catch (err) { notice(err.message) }
+  } catch (err) { toast(err.message) }
 })
 document.addEventListener("change", (e) => {
   if (e.target.id === "branch-select") { const r = route(); location.hash = at(r.repo, e.target.value) }
@@ -1291,4 +1313,4 @@ render()
 mountAgent({ currentBranch, me: () => me, flushSaves, bufferLines: () => [...buffer().children].map((li) => ({ id: li.id, text: fieldOf(li).value, order: orderOf(li) })), putLine, keysBetween, remove: (id) => db.remove(id), commit: async (message) => { // the buffer repaints a frame after the writes: press Commit once it shows them
   for (let i = 0; i < 30 && domText() === contentOf(currentBranch()?.value.head); i++) await new Promise((r) => requestAnimationFrame(r))
   $("message").value = message; $("commit-form").requestSubmit()
-}, notice })
+}, toast })

@@ -36,7 +36,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await expect(prRows(alice.page)).toHaveCount(1)
   await tab(alice, "pulls")
   await alice.page.locator('[data-act="merge"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("no conflicts")
+  await expect(alice.page.locator("#toasts")).toContainText("no conflicts")
   await expect(rows(alice.page)).toHaveCount(4)
   await tab(alice, "history")
   await expect(rows(alice.page).first()).toContainText("Merge Bob/main into main")
@@ -62,7 +62,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await go(bob, `#/r/${repo}/${main}`) // Bob comes to main's buffer to watch the resolution
   await tab(alice, "pulls")
   await alice.page.locator('#prs li:has-text("Bob\'s heading") [data-act="merge"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("1 conflict")
+  await expect(alice.page.locator("#toasts")).toContainText("1 conflict")
   await seesLine(alice, "<<<<<<< ours")
   await seesLine(alice, "Hello from Alice's main")
   await seesLine(alice, "=======")
@@ -73,7 +73,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await expect(alice.page.locator("#message")).toHaveValue("Merge Bob/main into main")
   // Markers still in the file: the commit is refused, in words.
   await alice.page.locator("#commit-btn").click()
-  await expect(alice.page.locator("#notice")).toContainText("Conflict markers are still in the file")
+  await expect(alice.page.locator("#toasts")).toContainText("Conflict markers are still in the file")
   // Ctrl/Cmd+A twice and paste: the whole buffer replaced by the resolution, with the fewest writes.
   const resolved = (await bufferText(alice.page)).replace(/<<<<<<< ours\n[\s\S]*?>>>>>>> theirs/, "  <h1>Hello from both</h1>")
   await replaceAll(alice, resolved)
@@ -81,7 +81,7 @@ test("divergent edits on different lines merge into one commit with two parents;
   await seesLine(alice, "Hello from both")
   await seesLine(bob, "Hello from both")
   await alice.page.locator("#commit-btn").click()
-  await expect(alice.page.locator("#notice")).toContainText(/Committed [0-9a-f]{7} to main/)
+  await expect(alice.page.locator("#toasts")).toContainText(/Committed [0-9a-f]{7} to main/)
   await expect(rows(alice.page)).toHaveCount(7)
   await tab(alice, "history")
   await expect(alice.page.locator("#commit-panel .meta")).toContainText("parents")

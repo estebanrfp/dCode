@@ -43,7 +43,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await expect(alice.page.locator("#agent")).toBeVisible()
   await ask(alice, "A todo list everyone shares")
   // The commit is Alice's, on main, with the brief as its message: the head moves and main runs the app.
-  await expect(alice.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7}) to main/)
+  await expect(alice.page.locator("#toasts")).toContainText(/Committed ([0-9a-f]{7}) to main/)
   await seesLine(alice, "<h1>Agent Todo</h1>")
   expect((await ids(alice.page)).map(([, t]) => t).join("\n")).toBe(APP)
   await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // no branch of the agent's: it is Alice's
@@ -60,7 +60,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await ask(alice, "Change the heading and add a line")
   await expect.poll(() => alice.page.evaluate(() => typeof globalThis.__agentRelease)).toBe("function") // the model holds at the gate
   await alice.page.evaluate(() => globalThis.__agentRelease())
-  await expect(alice.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7}) to main/)
+  await expect(alice.page.locator("#toasts")).toContainText(/Committed ([0-9a-f]{7}) to main/)
   await expect.poll(() => ids(alice.page).then((a) => a.map(([, t]) => t).join("\n"))).toBe(AGAIN) // the repaint lands a frame after the writes
   const after = await ids(alice.page)
   expect(after.filter(([id]) => seeded.some(([sid]) => sid === id)).length).toBe(seeded.length)
@@ -74,7 +74,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await ask(bob, "Change the line about the addition")
   await expect.poll(() => bob.page.evaluate(() => typeof globalThis.__agentRelease)).toBe("function")
   await bob.page.evaluate(() => globalThis.__agentRelease())
-  await expect(bob.page.locator("#notice")).toContainText("on your own branch") // the fork the button makes, once
+  await expect(bob.page.locator("#toasts")).toContainText("on your own branch") // the fork the button makes, once
   await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
   await seesLine(alice, "one added by Bob") // main's shared buffer changed on Alice's screen too; main's head did not move
   await expect(branchRows(alice.page)).toHaveCount(2)

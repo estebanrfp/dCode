@@ -24,7 +24,7 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await alice.page.locator('#repo-form [name="name"]').fill("hello-world")
   await alice.page.locator('#repo-form [name="description"]').fill("Renamed and described after the fact")
   await alice.page.locator('#repo-form button[type="submit"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("Repository updated")
+  await expect(alice.page.locator("#toasts")).toContainText("Repository updated")
   await expect(alice.page.locator("#repo-name")).toHaveAttribute("title", "Renamed and described after the fact")
 
   // Bob opens the repository: the same buffer, line for line — and no Edit button, it is not his node.

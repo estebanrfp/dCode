@@ -37,7 +37,7 @@ test("a private repository is sealed for everyone but its members; a grant opens
   await expect(bob.page.locator(".locked")).toBeVisible()
   await alice.page.locator('#member-form [name="address"]').fill(ADDR.bob)
   await alice.page.locator('#member-form button[type="submit"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("Bob holds the key now")
+  await expect(alice.page.locator("#toasts")).toContainText("Bob holds the key now")
   await expect(alice.page.locator("#members li")).toHaveCount(2)
   await expect(alice.page.locator("#members li").nth(1)).toContainText("Bob")
   await expect(bob.page.locator("#buffer")).toBeVisible()

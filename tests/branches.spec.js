@@ -73,7 +73,7 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   // and main's shared buffer follows the new head.
   await tab(alice, "pulls")
   await alice.page.locator('[data-act="merge"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("Fast-forwarded main")
+  await expect(alice.page.locator("#toasts")).toContainText("Fast-forwarded main")
   await expect(head(alice.page)).toHaveText(`@ ${second}`)
   await expect(prRows(alice.page).first()).toContainText("merged")
   await expect(prRows(bob.page).first()).toContainText("merged") // Alice's write, newer than his lie, corrected Bob's graph too
@@ -133,7 +133,7 @@ test("a branch you own can be deleted — asked twice — and its lines go with 
   await alice.page.locator('[data-act="delete-branch"]').click()
   await expect(alice.page.locator('[data-act="delete-branch"]')).toHaveText("Delete, really?")
   await alice.page.locator('[data-act="delete-branch"]').click()
-  await expect(alice.page.locator("#notice")).toContainText("Deleted scratch")
+  await expect(alice.page.locator("#toasts")).toContainText("Deleted scratch")
   await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // she stood on it: back to main
   await expect(branchRows(alice.page)).toHaveCount(1)
   await expect(branchRows(bob.page)).toHaveCount(1) // gone on the other side of the wire too
