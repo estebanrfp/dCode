@@ -254,6 +254,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .repo-bar .dirty { color: var(--warn); }
 .repo-bar .commit-form { display: flex; gap: var(--s2); align-items: center; margin-left: auto; }
 .repo-bar .commit-form input { width: 280px; max-width: 40vw; }
+.repo-bar .whose { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }
 .repo-bar .hint { width: 100%; font-size: 12px; color: var(--text-tertiary); }
 .repo-bar .hint:empty { display: none; } /* no second row when there is nothing to say: the bar's items stay centred */
 .repo-form { width: 100%; }

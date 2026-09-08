@@ -904,7 +904,7 @@ const repoSkeleton = (repo) => `<section class="repo">
 <div class="repo-bar">
   <a class="repo-name" id="repo-name" href="#/r/${esc(repo.id)}" title="${esc(repo.value.description)}">${esc(repo.value.name)}</a><span id="repo-lock" class="lock hidden" title="Private: the code is sealed for its members">private</span>
   <button type="button" class="small hidden" id="edit-repo" data-act="edit-repo" title="Rename or describe the repository — a write on a node you own">Edit</button>
-  <select id="branch-select" aria-label="Branch"></select>
+  <select id="branch-select" aria-label="Branch"></select><span class="whose hidden" id="branch-owner"></span>
   <span class="head" id="head-label"></span><span class="dirty hidden" id="dirty">· uncommitted changes</span>
   <form id="commit-form" class="commit-form"><input type="text" name="message" id="message" maxlength="120" autocomplete="off" placeholder="Commit message" required><button type="submit" class="primary" id="commit-btn">Commit</button></form>
   <form id="repo-form" class="repo-form row hidden"><input type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" aria-label="Name"><input type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line" aria-label="Description"><button type="submit" class="small primary">Save</button><button type="button" class="small" data-act="cancel-repo">Cancel</button></form>
@@ -1001,6 +1001,10 @@ function renderRepoBar() {
   // Why the button says what it says belongs to the button. The line below the
   // bar is for what you can act on, and appears only then.
   $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
+  // Beside the branch it is about: whose head it is, said where you read which branch you are on.
+  $("branch-owner").textContent = `· only ${nameOf(branch.value.owner)} moves it`
+  $("branch-owner").title = $("commit-btn").title
+  $("branch-owner").classList.toggle("hidden", !me || writable || !!viewing)
 
   const banner = $("merge-banner")
   banner.classList.toggle("hidden", !merging)
