@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908e")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908f")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // `?room=` opens a private sandbox of the same site (the tests use it, so can
 // you); `?relay=` points signalling at a relay of your own.
@@ -49,7 +49,7 @@ const PASSKEYS_AVAILABLE = window.isSecureContext && !!window.PublicKeyCredentia
 
 // ── Boot: the constitution travels beside the root of trust ─────────────────
 const db = await boot("open the graph on this device", () => gdb(ROOM, {
-  rtc: RELAY ? { relayUrls: [RELAY] } : true,
+  rtc: RELAY ? { relayUrls: [RELAY] } : true, debug: params.has("debug"), // `?debug`: the engine's own log — refusals, sync, persistence — the only way to see why something did not arrive
   sm: { superAdmins: [AUTHORITY], customRoles: CONSTITUTION.roles, ...(governanceRules.length && { governanceRules }), acls: true },
 }))
 globalThis.db = db // console handle, as in the official examples
@@ -1077,7 +1077,7 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", async (e) => {
   const li = e.target.closest("li[data-commit]")
   if (li) { const r = route(); location.hash = `#/r/${r.repo}/${$("main").dataset.branch}/${li.dataset.commit}`; return }
-  if (e.target === buffer() && !buffer().children.length && me) { await insertAfter(null); return } // an empty buffer: click to start a line
+  if (e.target === buffer() && !buffer().children.length && me && current) { await insertAfter(null); return } // an empty buffer: click to start a line (not before its branch is here)
   if (e.target === buffer() || e.target.classList?.contains("edit-panel")) { // the space under the last line is the editor too: the caret goes to its end
     const last = [...buffer()?.children ?? []].filter(shown).at(-1); if (last) caretTo(last, fieldOf(last).value.length); return
   }
