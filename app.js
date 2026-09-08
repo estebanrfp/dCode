@@ -1108,10 +1108,10 @@ document.addEventListener("click", async (e) => {
     if (act === "cancel-repo") { $("repo-form")?.classList.add("hidden"); return }
     if (act === "run") { runPreview(domText(), "the buffer"); showTab("preview"); return }
     if (act === "download") { const b = currentBranch(); download(domText(), fileName(b && nodes.get(b.value.repo))); return }
-    if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(c.value.content, fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
+    if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(contentOf(c.id), fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
     if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
-    if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) { runPreview(c.value.content, `${short(c.id)} — ${c.value.message}`); showTab("preview") } return }
-    if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, c.value.content); notice(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
+    if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) { runPreview(contentOf(c.id), `${short(c.id)} — ${c.value.message}`); showTab("preview") } return } // contentOf, never value.content: a sealed commit this session wrote keeps its text aside
+    if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, contentOf(c.id)); notice(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
     if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
