@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js"))
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908d")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // `?room=` opens a private sandbox of the same site (the tests use it, so can
 // you); `?relay=` points signalling at a relay of your own.
