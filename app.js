@@ -646,7 +646,7 @@ let changeTimer = null, previewTimer = null, lastRun = null
 function afterChange() {
   clearTimeout(changeTimer); changeTimer = setTimeout(renderRepoBar, 120)
   clearTimeout(previewTimer)
-  previewTimer = setTimeout(() => { if ($("autorun")?.checked && current) { const text = domText(); if (text !== lastRun) runPreview(text, "the buffer") } }, 600)
+  previewTimer = setTimeout(() => { if ($("autorun")?.checked && current && !route().commit) { const text = domText(); if (text !== lastRun) runPreview(text, "the buffer") } }, 600) // not while a version from the timeline is on screen: that one was asked for
 }
 const runPreview = (html, what) => { lastRun = html; $("preview").srcdoc = html; $("preview-what").textContent = what }
 // The project is one file, so it leaves as one file: the buffer, or any commit, as .html.
@@ -1000,14 +1000,18 @@ const renderTimeline = (repo, branches, commits, selected) => {
 }
 const renderCommitPanel = (repo, branch, id) => {
   const c = commitOf(id)
-  if (!c) { $("commit-panel").innerHTML = `<p class="dim">Select a commit to read its diff and run it.</p>`; return }
+  if (!c) { $("commit-panel").innerHTML = `<p class="dim">Select a commit to read its diff, and to run it.</p>`; return }
+  // Selecting a version runs it: reading history writes nothing and asks nobody.
+  // The buffer comes back the moment the selection is dropped.
+  const content = contentOf(c.id)
+  if (lastRun !== content) runPreview(content, `${short(c.id)} — ${c.value.message}`)
   const parent = commitOf(c.value.parents?.[0])
-  const rows = diffLines(parent ? parent.value.content.split("\n") : [], c.value.content.split("\n"))
+  const rows = diffLines(parent ? contentOf(parent.id).split("\n") : [], content.split("\n"))
   const added = rows.filter((r) => r.kind === "add").length, removed = rows.filter((r) => r.kind === "del").length
   const LIMIT = 400, shown = rows.slice(0, LIMIT)
   $("commit-panel").innerHTML = `<h3>${esc(short(c.id))} · ${esc(c.value.message)}</h3>
 <p class="meta">${esc(nameOf(c.value.owner))} · ${new Date(c.value.at).toLocaleString()} · ${c.value.parents?.length ? `parent${c.value.parents.length > 1 ? "s" : ""} ${c.value.parents.map(short).map(esc).join(", ")}` : "root"} · <span title="${esc(c.id)}">${esc(abbr(c.value.owner))}:${esc(short(c.id))}…</span></p>
-<div class="actions"><button class="small" data-act="run-commit" data-commit="${esc(c.id)}">Run this version</button><button class="small" data-act="download-commit" data-commit="${esc(c.id)}">Download this version</button>${branch && me ? `<button class="small" data-act="load-commit" data-commit="${esc(c.id)}">Load into the editor</button>` : ""}</div>
+<div class="actions">${branch && me ? `<button class="small" data-act="load-commit" data-commit="${esc(c.id)}" title="Bring this version into the branch's buffer — the shared one, so everyone editing ${esc(branchLabel(repo, branch))} sees it. Commit it to make it the head again.">Checkout</button>` : ""}<button class="small" data-act="download-commit" data-commit="${esc(c.id)}">Download this version</button></div>
 <div class="diff-summary">${parent ? `against ${esc(short(parent.id))}: ` : "the whole file: "}<span class="add">+${added}</span> <span class="del">−${removed}</span></div>
 <pre class="diff">${shown.map((r) => `<div class="${r.kind}">${r.kind === "add" ? "+" : r.kind === "del" ? "−" : " "} ${esc(r.text)}</div>`).join("")}${rows.length > LIMIT ? `<div class="more">… ${rows.length - LIMIT} more lines</div>` : ""}</pre>`
 }
@@ -1132,7 +1136,6 @@ document.addEventListener("click", async (e) => {
     if (act === "download") { const b = currentBranch(); download(domText(), fileName(b && nodes.get(b.value.repo))); return }
     if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(contentOf(c.id), fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
     if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
-    if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) { runPreview(contentOf(c.id), `${short(c.id)} — ${c.value.message}`); showTab("preview") } return } // contentOf, never value.content: a sealed commit this session wrote keeps its text aside
     if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, contentOf(c.id)); toast(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }

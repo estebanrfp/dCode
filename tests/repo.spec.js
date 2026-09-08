@@ -69,15 +69,15 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   expect(saved).toContain("Hello, Bob, from dCode")
   expect(saved.split("\n")).toHaveLength(TEMPLATE_LINES)
 
-  // Time travel: the first version, selected in the timeline, runs as it was — and downloads as it was.
+  // Time travel: selecting the first version in the timeline runs it as it was, with
+  // no button and no write — and it downloads as it was.
   await tab(bob, "history")
   await rows(bob.page).nth(1).click()
   await expect(bob.page.locator("#commit-panel")).toContainText("root")
-  await bob.page.locator('[data-act="run-commit"]').click()
   await expect(bob.page.locator("#preview-what")).toContainText("Initial commit")
   await expect(preview(bob.page)).toContainText("Hello from dCode")
   await expect(preview(bob.page)).not.toContainText("Hello, Bob")
-  await tab(bob, "history") // running a version showed the Preview tab; the version's download lives in History
+  await expect(bob.page.locator("#dirty")).toBeHidden() // reading a version wrote nothing
   const [old] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download-commit"]').click()])
   expect(old.suggestedFilename()).toMatch(/^hello-world-[0-9a-f]{7}\.html$/)
   expect(readFileSync(await old.path(), "utf8")).toContain("Hello from dCode")
