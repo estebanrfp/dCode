@@ -232,7 +232,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 
 /* A repository: the bar, then the buffer beside the running page */
 .repo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.repo-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; flex: none; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 13px; }
+.repo-bar { display: flex; align-items: center; align-content: center; gap: var(--s3); flex-wrap: wrap; flex: none; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 13px; }
 .repo-bar .repo-name { font: 600 14px var(--mono); color: var(--text-primary); }
 .repo-bar select { padding: 3px 6px; font: 12px var(--mono); }
 .repo-bar .head { font-family: var(--mono); color: var(--text-tertiary); }
