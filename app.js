@@ -1241,14 +1241,16 @@ db.sm.setSecurityStateChangeCallback((state) => {
 })
 
 // ── The subscription: after everything it may call, for a returning device ──
-// Vault nodes travel as the engine's sealed wrappers: they are not stored here,
-// they only tell whoever is looking at that repository to ask the vault again.
+// A sealed record shows no `type` — its whole value is ciphertext — so the query
+// asks for our types or for a node without one, and a vault is recognised by the
+// id its repository already holds. A grant or a revocation rewrites that record,
+// which is how a member's page learns to ask for the key again, on its own.
 const chains = new Map() // per node: sealed values open in arrival order
 const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).then(fn, fn); chains.set(id, p); return p }
-await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line"] } }, { _gdbWrapperType: { $exists: true } }] } }, ({ id, value: stored, timestamp, action }) => {
+await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
-  if (value?._gdbWrapperType) {
-    const vault = id.replace(/^SM_ID_PREFIX_/, ""), repo = of("repo").find((r) => r.value.vault === vault)
+  if (value && value.type === undefined) {
+    const repo = of("repo").find((r) => r.value.vault && id.endsWith(r.value.vault))
     if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); unlock(repo.id) }
     return
   }
