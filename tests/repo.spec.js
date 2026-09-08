@@ -95,9 +95,12 @@ test("the views are filters over one file: CSS shows the <style> block and JS th
   const visible = (page) => page.locator("#buffer .line:visible")
   const numbers = (page) => visible(page).locator(".ln").allTextContents()
 
-  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES)
   await expect(alice.page.locator('#buffer .line[data-lang="css"]')).toHaveCount(2)
   await expect(alice.page.locator('#buffer .line[data-lang="js"]')).toHaveCount(2)
+  // The HTML view is the markup: the two blocks fold to their tag lines, which say what they hold and where it is edited.
+  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES - 4)
+  await expect(alice.page.locator('#buffer .line[data-fold]')).toHaveCount(2)
+  await expect(alice.page.locator('#buffer .line[data-fold]').first()).toHaveAttribute("data-fold", "2 lines of CSS — the CSS view")
   // Coloured: tags in the HTML, properties in the CSS, keywords in the JS — painted under the text.
   await expect(alice.page.locator('#buffer .line:nth-child(2) .hl .t-tag')).toHaveText("html")
   await expect(alice.page.locator('#buffer .line[data-lang="css"] .hl .t-prop').first()).toHaveText("margin")
@@ -110,12 +113,13 @@ test("the views are filters over one file: CSS shows the <style> block and JS th
   await expect(visible(alice.page)).toHaveCount(2)
   expect(await numbers(alice.page)).toEqual(["18", "19"])
 
-  // An edit in the CSS view is an edit of the same node: Bob, in the HTML view, sees it on line 8.
+  // An edit in the CSS view is an edit of the same node: Bob sees it on line 8 — in his CSS view, where the block is shown.
   await alice.page.locator('.views [data-view="css"]').click()
   await setLine(alice, "button {", "  button { font: inherit; padding: 12px 24px; border-radius: 12px; border: 1px solid #4c8dff; background: none; color: inherit; cursor: pointer; }")
   await go(bob, `#/r/${repo}`)
   await seesLine(bob, "padding: 12px 24px")
   expect(await bob.page.locator("#buffer .line").locator("textarea").evaluateAll((els) => els.findIndex((e) => e.value.includes("padding: 12px 24px")))).toBe(7)
+  await bob.page.locator('.views [data-view="css"]').click()
   await expect(bob.page.locator('#buffer .line[data-lang="css"] .hl .t-num').filter({ hasText: "12px" }).first()).toBeVisible()
 
   // Enter at the end of the last CSS line, in the CSS view: the new line is inside <style>, visible here, and takes the caret.
@@ -127,7 +131,8 @@ test("the views are filters over one file: CSS shows the <style> block and JS th
   await seesLine(bob, "letter-spacing")
   await expect(bob.page.locator("#buffer .line").filter({ has: bob.page.locator('textarea') })).toHaveCount(TEMPLATE_LINES + 1)
   await alice.page.locator('.views [data-view="html"]').click()
-  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES + 1)
+  await expect(visible(alice.page)).toHaveCount(TEMPLATE_LINES - 4) // the markup: the new CSS line is folded with its block
+  await expect(alice.page.locator('#buffer .line[data-fold]').first()).toHaveAttribute("data-fold", "3 lines of CSS — the CSS view")
   await alice.close(); await bob.close()
 })
 
@@ -213,28 +218,29 @@ test("whole lines: Shift+↓ selects a range and the line numbers select another
   await expect.poll(() => lineIndex(bob.page, "Hello from dCode")).toBe(-1)
   await expect(alice.page.locator("#buffer .line:focus-within textarea")).toHaveValue('  <button id="count">Clicked 0 times</button>')
 
-  // The line numbers: click one, Shift+click another. A paste replaces the range — the first
-  // line keeps its node, the rest go, extra lines are minted between — and the other peer follows.
-  await alice.page.locator("#buffer .line").nth(4).locator(".ln").click()
+  // The line numbers: click one, Shift+click another — in the markup, where the HTML view shows them; a range
+  // never spans a folded block. A paste replaces the range — the first line keeps its node, the rest go,
+  // extra lines are minted between — and the other peer follows.
+  await alice.page.locator("#buffer .line").nth(2).locator(".ln").click()
   await expect(selected(alice.page)).toHaveCount(1)
-  await alice.page.locator("#buffer .line").nth(6).locator(".ln").click({ modifiers: ["Shift"] })
+  await alice.page.locator("#buffer .line").nth(4).locator(".ln").click({ modifiers: ["Shift"] })
   await expect(selected(alice.page)).toHaveCount(3)
-  expect(await selectedText(alice.page)).toEqual(["<title>Hello, dCode</title>", "<style>", "  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0d0f12; color: #e8eaed; font: 18px system-ui, sans-serif; text-align: center; }"])
-  const fifthId = await alice.page.locator("#buffer .line").nth(4).getAttribute("id")
+  expect(await selectedText(alice.page)).toEqual(["<head>", '<meta charset="utf-8">', "<title>Hello, dCode</title>"])
+  const thirdId = await alice.page.locator("#buffer .line").nth(2).getAttribute("id")
   await alice.page.evaluate((t) => {
     const clipboardData = new DataTransfer(); clipboardData.setData("text/plain", t)
     document.activeElement.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
-  }, "<title>Ranges</title>\n<style>")
+  }, "<head>\n<title>Ranges</title>")
   await expect(selected(alice.page)).toHaveCount(0)
   await expect(lines(alice.page)).toHaveCount(TEMPLATE_LINES - 4)
-  await expect(alice.page.locator("#buffer .line").nth(4)).toHaveAttribute("id", fifthId) // the first line kept its node
-  await expect(alice.page.locator("#buffer .line").nth(4).locator("textarea")).toHaveValue("<title>Ranges</title>")
-  await expect(alice.page.locator("#buffer .line").nth(5).locator("textarea")).toHaveValue("<style>")
-  await expect(alice.page.locator("#buffer .line").nth(6).locator("textarea")).toHaveValue(/^  button \{/)
+  await expect(alice.page.locator("#buffer .line").nth(2)).toHaveAttribute("id", thirdId) // the first line kept its node
+  await expect(alice.page.locator("#buffer .line").nth(2).locator("textarea")).toHaveValue("<head>")
+  await expect(alice.page.locator("#buffer .line").nth(3).locator("textarea")).toHaveValue("<title>Ranges</title>")
+  await expect(alice.page.locator("#buffer .line").nth(4).locator("textarea")).toHaveValue("<style>")
   await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES - 4)
   await seesLine(bob, "<title>Ranges</title>")
-  await expect(bob.page.locator("#buffer .line").nth(4)).toHaveAttribute("id", fifthId)
-  await expect.poll(() => lineIndex(bob.page, "body { margin: 0")).toBe(-1)
+  await expect(bob.page.locator("#buffer .line").nth(2)).toHaveAttribute("id", thirdId)
+  await expect.poll(() => lineIndex(bob.page, '<meta charset="utf-8">')).toBe(-1)
 
   // Escape lets go; typing afterwards is the caret again, and the buffer still runs.
   await alice.page.locator("#buffer .line").nth(2).locator(".ln").click()

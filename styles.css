@@ -237,6 +237,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .repo-bar .commit-form { display: flex; gap: var(--s2); align-items: center; margin-left: auto; }
 .repo-bar .commit-form input { width: 280px; max-width: 40vw; }
 .repo-bar .hint { width: 100%; font-size: 12px; color: var(--text-tertiary); }
+.repo-bar .hint:empty { display: none; } /* no second row when there is nothing to say: the bar's items stay centred */
 .repo-form { width: 100%; }
 .repo-form input[name="name"] { flex: 0 1 220px; font-family: var(--mono); }
 .repo-form input[name="description"] { flex: 1 1 280px; }
@@ -306,6 +307,10 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .views button:hover:enabled { border-color: transparent; border-bottom-color: var(--border-strong); color: var(--text-primary); }
 .view-hint { align-self: center; margin-left: var(--s2); font-size: 12px; color: var(--text-tertiary); }
 .buffer[data-view="css"] .line:not([data-lang="css"]), .buffer[data-view="js"] .line:not([data-lang="js"]) { display: none; }
+/* The HTML view is the markup: the <style> and <script> blocks fold to their tag lines, which say what they hold and where it is edited. */
+.buffer[data-view="html"] .line[data-lang="css"], .buffer[data-view="html"] .line[data-lang="js"] { display: none; }
+.buffer[data-view="html"] .line[data-fold] { position: relative; }
+.buffer[data-view="html"] .line[data-fold]::after { content: attr(data-fold); position: absolute; left: calc(var(--gutter) + var(--fold-at, 0ch) + 20px); top: 0; padding: 0 var(--s2); font: 11px/var(--line-h, 1.6) var(--mono); color: var(--text-tertiary); background: var(--bg-primary); pointer-events: none; z-index: 5; }
 .line:focus-within { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .line.remote { animation: remote-flash .9s ease-out; }
 @keyframes remote-flash { from { background: color-mix(in srgb, var(--warn) 20%, transparent); } to { background: transparent; } }

@@ -360,7 +360,7 @@ function placeSorted(li) {
   const next = [...buffer().children].find((el) => el !== li && (orderOf(el) > orderOf(li) || (orderOf(el) === orderOf(li) && el.id > li.id)))
   buffer().insertBefore(li, next ?? null)
 }
-const caretTo = (li, pos) => { const ta = fieldOf(li); if (!ta) return; ta.focus(); ta.setSelectionRange(pos, pos) }
+const caretTo = (li, pos) => { const ta = fieldOf(li); if (!ta) return; if (li.offsetParent === null && li.dataset.lang) showView(li.dataset.lang); ta.focus(); ta.setSelectionRange(pos, pos) } // a line the view hides pulls its view up
 // "The user is typing here RIGHT NOW" — a window that lost the system focus
 // keeps naming its last textarea, so the line would freeze in the second window.
 const isMine = (ta) => ta === document.activeElement && document.hasFocus()
@@ -565,7 +565,7 @@ function relayout() {
   paintRange() // a line that arrived or left under the selection
   const list = [...buffer().children]
   const seen = { html: 0, css: 0, js: 0 }
-  let longest = 60, state = "html"
+  let longest = 60, state = "html", opener = null, pull = null
   list.forEach((li, i) => {
     const t = fieldOf(li).value
     li.firstChild.textContent = i + 1; longest = Math.max(longest, t.length)
@@ -576,7 +576,12 @@ function relayout() {
     if (li.dataset.lang !== lang) { li.dataset.lang = lang; highlight(li) }
     li.dataset.langNext = state
     seen[lang]++
+    // The HTML view folds the two blocks to their tag lines: the opener says how much it hides, and where it is edited.
+    if (lang === "html") { if (opener) { opener.dataset.fold = `${plural(seen[opener.dataset.langNext] - opener.dataset.seen, "line")} of ${opener.dataset.langNext.toUpperCase()} — the ${opener.dataset.langNext.toUpperCase()} view`; opener = null } if (state !== "html") { opener = li; li.dataset.seen = seen[state]; li.style.setProperty("--fold-at", `${t.length}ch`) } else delete li.dataset.fold }
+    else if (li.contains(document.activeElement)) pull = lang // typing into a block from the HTML view: the view follows the caret
   })
+  if (opener) opener.dataset.fold = `${plural(seen[opener.dataset.langNext] - opener.dataset.seen, "line")} of ${opener.dataset.langNext.toUpperCase()} — the ${opener.dataset.langNext.toUpperCase()} view`
+  if (pull && (buffer().dataset.view ?? "html") === "html") { showView(pull); return }
   buffer().style.setProperty("--cols", longest + 2)
   const view = buffer().dataset.view ?? "html"
   $("view-hint").textContent = view !== "html" && !seen[view] ? `no <${view === "css" ? "style" : "script"}> block in this file — add one in the HTML view` : ""
