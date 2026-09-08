@@ -11,7 +11,7 @@
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
 import { CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "./constitution.js"
-import { mountAgent } from "./agent.js"
+import { desk, mountAgent } from "./agent.js"
 
 const $ = (id) => document.getElementById(id)
 const eqAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
@@ -193,7 +193,8 @@ const decryptStored = async (repoId) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const abbr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 const DEMO_NAMES = Object.fromEntries(DEMO_IDENTITIES.map((i) => [i.address.toLowerCase(), i.name]))
-const nameOf = (addr) => DEMO_NAMES[addr?.toLowerCase()] || abbr(addr)
+const NAMES = new Map() // names learnt at runtime: the agent announces its own
+const nameOf = (addr) => DEMO_NAMES[addr?.toLowerCase()] || NAMES.get(addr?.toLowerCase()) || abbr(addr)
 const short = (id) => (id ? id.split(":").pop().slice(0, 7) : "—")
 const branchLabel = (repo, b) => (eqAddr(b.value.owner, repo.value.owner) ? b.value.name : `${nameOf(b.value.owner)}/${b.value.name}`)
 const ago = (at) => {
@@ -1004,9 +1005,19 @@ const render = () => {
   main.dataset.repo = ""; main.classList.remove("full"); current = null
   if (r.page === "login" && !me && !door.open) door.showModal() // a contextual "Sign in" re-opens the door; the page behind it stays
   const page = r.page === "login" ? "" : r.page
-  const titles = { "": "dCode", new: "New repository · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
-  main.innerHTML = { "": reposPage, new: newPage, session: sessionPage, constitution: constitutionPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  const titles = { "": "dCode", new: "New repository · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode", agent: "The agent's desk · dCode" }
+  main.innerHTML = { "": reposPage, new: newPage, session: sessionPage, constitution: constitutionPage, agent: agentPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
   document.title = titles[page] ?? "dCode"
+}
+/** The desk: this window is the agent. Rendered from what it knows; the log refreshes in place. */
+const agentPage = () => `<div class="page desk"><h1>The agent's desk</h1>
+<p class="lede">This window is the agent: an identity of its own, a model that runs here on WebGPU, and a place in the room like anyone's. It takes briefs from the prompt box of the other windows, writes on a branch it owns and proposes a pull request. Leave it open.</p>
+<dl class="desk-facts"><dt>Identity</dt><dd id="desk-address">${esc(desk.address ? `agent · ${abbr(desk.address)}` : "signing in…")}</dd><dt>Model</dt><dd id="desk-model">${esc(desk.model ?? "loads on the first brief")}</dd><dt>State</dt><dd id="desk-state">${esc(desk.state)}</dd></dl>
+<pre id="desk-log" class="desk-log">${esc(desk.log.join("\n"))}</pre></div>`
+const paintDesk = () => {
+  if (route().page !== "agent" || !$("desk-log")) return
+  $("desk-address").textContent = desk.address ? `agent · ${abbr(desk.address)}` : "signing in…"
+  $("desk-model").textContent = desk.model ?? "loads on the first brief"; $("desk-state").textContent = desk.state; $("desk-log").textContent = desk.log.join("\n")
 }
 const renderRepo = (r, main) => {
   const repo = nodes.get(r.repo)
@@ -1036,8 +1047,8 @@ const renderNav = (page) => {
   $("nav").innerHTML = [["", "repositories"], ["new", "new"], ["constitution", "constitution"]].map(([p, label]) => `<a href="#/${p}" data-nav="${p}"${page === p ? ' class="sel"' : ""}>${label}</a>`).join("")
 }
 const renderSession = () => { // the pill: name · abbreviated address, opening the identity view; the logout icon beside the theme
-  const pill = $("session-addr"), demo = me && DEMO_IDENTITIES.find((i) => eqAddr(i.address, me))
-  pill.textContent = me ? (demo ? `${demo.name} · ${session.abbrAddr}` : session.abbrAddr ?? me) : ""
+  const pill = $("session-addr"), name = me && nameOf(me) // a demo identity's name, or one learnt at runtime — the agent's
+  pill.textContent = me ? (name !== abbr(me) ? `${name} · ${session.abbrAddr}` : session.abbrAddr ?? me) : ""
   pill.title = me ? `${me} — your identity` : ""
   show($("logout-btn"), !!me)
 }
@@ -1241,4 +1252,4 @@ presence()
 render()
 
 // ── The agent: a model in this browser, committing like anyone else ─────────
-mountAgent({ currentBranch, me: () => me, create, patch, newCommit, putLine, contentOf, runPreview, short, notice })
+mountAgent({ currentBranch, me: () => me, node: (id) => nodes.get(id), create, patch, newCommit, putLine, contentOf, short, notice, presence: presenceChannel, room: db.room, sm: db.sm, paintDesk, name: (addr, label) => { NAMES.set(addr.toLowerCase(), label); renderSession(); scheduleRender() } })
