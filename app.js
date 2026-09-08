@@ -982,22 +982,39 @@ function renderRepoBar() {
   if (merging && !$("message").value) $("message").value = merging.message
 }
 const renderTimeline = (repo, branches, commits, selected) => {
-  const ROW = 30, X0 = 10, DX = 12
+  // The lanes are the branches, one colour each, and a lane is drawn as one
+  // stroke from its first commit to its last — a fork leaves that stroke and a
+  // merge rejoins it, which is the shape that makes the topology readable.
+  const ROW = 30, X0 = 13, DX = 16, LANES = 5
   const lanes = new Map(branches.map((b, i) => [b.id, i])), index = new Map(commits.map((c, i) => [c.id, i]))
-  const x = (c) => X0 + DX * (lanes.get(c.value.branch) ?? 0), y = (i) => i * ROW + ROW / 2
-  const width = X0 * 2 + DX * Math.max(1, lanes.size), height = Math.max(ROW, ROW * commits.length)
-  const lines = commits.flatMap((c, i) => (c.value.parents ?? []).map((p) => {
-    const j = index.get(p); if (j === undefined) return ""
+  const lane = (c) => lanes.get(c.value.branch) ?? 0
+  const x = (c) => X0 + DX * (lane(c) % LANES), y = (i) => i * ROW + ROW / 2
+  const width = X0 * 2 + DX * Math.min(Math.max(1, lanes.size), LANES), height = Math.max(ROW, ROW * commits.length)
+  // The spine of each lane: from its newest commit to its oldest, uninterrupted.
+  const spans = [...new Set(commits.map(lane))].map((l) => {
+    const rows = commits.map((c, i) => (lane(c) === l ? i : -1)).filter((i) => i >= 0)
+    if (rows.length < 2) return ""
+    const cx = X0 + DX * (l % LANES)
+    return `<path class="g-line" style="stroke: var(--lane-${l % LANES})" d="M${cx} ${y(rows[0])} L${cx} ${y(rows.at(-1))}"/>`
+  })
+  // A parent in another lane: the curve that forked from it, or merged into it.
+  const links = commits.flatMap((c, i) => (c.value.parents ?? []).map((p) => {
+    const j = index.get(p); if (j === undefined || lane(commits[j]) === lane(c)) return ""
     const x1 = x(c), y1 = y(i), x2 = x(commits[j]), y2 = y(j), ym = (y1 + y2) / 2
-    return `<path class="g-line" d="M${x1} ${y1} C${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"/>`
+    return `<path class="g-line" style="stroke: var(--lane-${lane(c) % LANES})" d="M${x1} ${y1} C${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"/>`
   }))
-  const dots = commits.map((c, i) => `<circle class="g-dot${tipsAt(branches, c.id).length ? " head" : ""}${c.id === selected ? " sel" : ""}" cx="${x(c)}" cy="${y(i)}" r="4"/>`)
+  const dots = commits.map((c, i) => {
+    const cls = `g-dot${tipsAt(branches, c.id).length ? " head" : ""}${c.id === selected ? " sel" : ""}`
+    const colour = `var(--lane-${lane(c) % LANES})`
+    return `<circle class="${cls}" style="stroke: ${colour}${tipsAt(branches, c.id).length ? `; fill: ${colour}` : ""}" cx="${x(c)}" cy="${y(i)}" r="4.5"/>`
+  })
+  const lines = [...spans, ...links]
   const g = $("graph")
   g.setAttribute("viewBox", `0 0 ${width} ${height}`); g.setAttribute("width", width); g.setAttribute("height", height)
   g.innerHTML = lines.join("") + dots.join("")
   $("commits").innerHTML = commits.map((c) => {
     const tips = tipsAt(branches, c.id)
-    return `<li data-commit="${esc(c.id)}" class="${c.id === selected ? "sel" : ""}${tips.length ? " head" : ""}" title="${esc(c.value.message)} — ${esc(nameOf(c.value.owner))}, ${new Date(c.value.at).toLocaleString()}"><span class="msg">${esc(c.value.message)}</span>${tips.map((b) => `<span class="chip${eqAddr(b.value.owner, me) ? " mine" : ""}">${esc(branchLabel(repo, b))}</span>`).join("")}<span class="meta">${esc(short(c.id))} · ${esc(nameOf(c.value.owner))} · ${ago(c.value.at)}</span></li>`
+    return `<li data-commit="${esc(c.id)}" class="${c.id === selected ? "sel" : ""}${tips.length ? " head" : ""}" title="${esc(c.value.message)} — ${esc(nameOf(c.value.owner))}, ${new Date(c.value.at).toLocaleString()}"><span class="msg">${esc(c.value.message)}</span>${tips.map((b) => `<span class="chip${eqAddr(b.value.owner, me) ? " mine" : ""}">${esc(branchLabel(repo, b))}</span>`).join("")}<span class="meta"><span class="h">${esc(short(c.id))}</span><span class="who">${esc(nameOf(c.value.owner))}</span><span class="when">${ago(c.value.at)}</span></span></li>`
   }).join("") || `<li class="dim">no commits yet</li>`
 }
 const renderCommitPanel = (repo, branch, id) => {

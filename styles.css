@@ -381,13 +381,17 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .graph li.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .graph li.head .msg { font-weight: 600; }
 .graph .msg { overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
-.graph .meta { margin-left: auto; color: var(--text-tertiary); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
+/* Three columns, so the eye reads down each one instead of chasing the text. */
+.graph .meta { margin-left: auto; display: grid; grid-template-columns: 7ch 8ch 7rem; gap: var(--s3); color: var(--text-tertiary); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
+.graph .meta > span { overflow: hidden; text-overflow: ellipsis; }
+.graph .meta .when { text-align: right; }
 .chip { display: inline-block; padding: 0 6px; border-radius: 10px; font: 11px/18px var(--mono); border: 1px solid var(--border-strong); color: var(--text-secondary); flex-shrink: 0; }
 .chip.mine { border-color: var(--accent); color: var(--accent); }
-.g-line { stroke: var(--border-strong); stroke-width: 1.5; fill: none; }
-.g-dot { fill: var(--bg-secondary); stroke: var(--text-tertiary); stroke-width: 1.5; }
-.g-dot.head { stroke: var(--accent); fill: var(--accent); }
-.g-dot.sel { stroke: var(--text-primary); }
+/* One colour per lane, so a fork and a merge are read rather than counted. */
+.graph { --lane-0: var(--accent); --lane-1: var(--violet); --lane-2: var(--ok); --lane-3: var(--warn); --lane-4: var(--danger); }
+.g-line { stroke: var(--border-strong); stroke-width: 2; fill: none; stroke-linecap: round; opacity: .75; }
+.g-dot { fill: var(--bg-secondary); stroke: var(--text-tertiary); stroke-width: 2; }
+.g-dot.sel { stroke-width: 3.5; }
 .commit-panel { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--border-subtle); }
 .commit-panel .meta { font-size: 12px; color: var(--text-tertiary); font-family: var(--mono); overflow-wrap: anywhere; }
 .commit-panel .actions { display: flex; gap: var(--s1); flex-wrap: wrap; margin: var(--s2) 0; }
