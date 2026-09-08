@@ -45,6 +45,15 @@ Nothing leaves the machine: the weights (`Qwen2.5-Coder`, 7B by default, 3B and 
 
 ## Testing
 
+`?engine=local` loads the engine from this origin, at `/GenosDB/dist/index.js`, instead of the CDN — the shape the project's own static server serves when dCode sits beside GenosDB in the same tree. It is how a build that is not published yet gets tried here, in two real browsers, without publishing anything:
+
+```
+bun serve.js            # from GDB-Project/, port 5504
+http://127.0.0.1:5504/Repos/dCode/?engine=local
+```
+
+Only that one literal is honoured; a URL from the address bar is never imported.
+
 The door offers **Reset: wipe this device (testing)** under the identities: `db.clear()` and nothing else, so this device's copy of the graph goes and the page shows it empty at once. It is not a reset of the room and cannot be — every other peer still holds what it holds and hands it back on the next connection — but what lived only here does go with it, which is how a graph from an older shape of the app, or operations nobody accepts any more, leave a device.
 
 Signed in, the home page offers **Delete my repositories**, asked twice: every repository you own goes, with its branches, commits, pull requests and lines — on every peer, since a removal is a signed write like any other. Forks and commits by other people are theirs and stay. It is the one honest reset in a peer-to-peer room: what is yours goes everywhere; a room cannot be emptied of what is not yours, and the URL never changes for it — everyone who opens dCode is in the same room.
