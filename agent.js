@@ -3,10 +3,11 @@
 // changes in place, line by line, under your session: a line the buffer
 // already holds keeps its node, a changed one is rewritten under the same
 // id, only what is new is inserted and only what is gone is removed. Then
-// the flow is the one you know: the commit message is prefilled with the
-// brief, and you commit to your branch, or fork and commit on someone else's
-// and propose it. No server, no key, no request leaves the machine: the
-// weights are downloaded once from the model hub and cached by the browser.
+// it presses Commit for you, with the brief as the message: a commit on the
+// branch you stand on when it is yours to move, and on someone else's the
+// fork the button makes — once — after which you stand on your own branch.
+// No server, no key, no request leaves the machine: the weights are
+// downloaded once from the model hub and cached by the browser.
 const WEBLLM = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm"
 const MODELS = ["Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC", "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC", "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC"]
 const DOCS = "https://cdn.jsdelivr.net/gh/estebanrfp/gdb@main/llms.txt" // GenosDB's own summary for models, fetched fresh so the agent follows the engine
@@ -102,9 +103,9 @@ export function mountAgent(api) {
       if (tail.trim()) await land(tail)
       if (held !== null) await decide(held, null)
       await place(existing.length) // whatever the buffer still held past the last anchor is gone
-      api.proposeMessage(brief.slice(0, 120))
-      api.notice(changed ? `The agent changed ${changed} line${changed === 1 ? "" : "s"}. Commit them as yours, or discard.` : "The agent left the file as it is.")
       input.value = ""
+      if (!changed) return api.notice("The agent left the file as it is.")
+      api.commit(brief.slice(0, 120)) // what pressing Commit does: to your branch, or a fork of your own on someone else's
     } catch (err) { api.notice(err.message) } finally { input.disabled = false; say(""); input.focus() }
   })
 }

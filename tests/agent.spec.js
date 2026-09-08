@@ -1,12 +1,11 @@
 /**
  * The agent edits the shared buffer as you: the file changes in place, line
- * by line, under your session, and then the flow is the one you know —
- * commit to your branch, or fork and commit on someone else's and propose
- * it. The model is a part the suite replaces with a stub that streams a
+ * by line, under your session, and then presses Commit for you — to your
+ * branch, or the fork the button makes on someone else's, once. The model is a part the suite replaces with a stub that streams a
  * fixed file; the fitting, the ownership and the wire are what is pinned.
  */
 import { expect, test } from "@playwright/test"
-import { assertTransport, branchRows, commit, connected, createRepo, head, loginAs, preview, prRows, rows, seesLine, tab, visitor } from "./_helpers.js"
+import { assertTransport, branchRows, connected, createRepo, head, loginAs, preview, prRows, rows, seesLine, tab, visitor } from "./_helpers.js"
 
 const APP = `<!DOCTYPE html>
 <html lang="en">
@@ -30,7 +29,7 @@ globalThis.__agentEngine = { chat: { completions: { create: async () => (async f
 const ids = (p) => p.locator("#buffer .line").evaluateAll((els) => els.map((el) => [el.id, el.querySelector("textarea").value]))
 const ask = async (v, brief) => { await v.page.locator("#agent-brief").fill(brief); await v.page.locator("#agent-go").click() }
 
-test("the agent edits the buffer as you — in place, the unchanged lines keeping their nodes — and you commit; on someone else's repository you fork and propose", async ({ browser }) => {
+test("the agent edits the buffer as you — in place, the unchanged lines keeping their nodes — and commits as you; on someone else's repository it forks once, and the pull request is yours", async ({ browser }) => {
   const room = `dcode-test-agent-${Date.now().toString(36)}`
   const alice = await visitor(browser, room), bob = await visitor(browser, room)
   await loginAs(alice, "alice"); await loginAs(bob, "bob")
@@ -43,47 +42,41 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   // The first brief on a fresh repository: the template becomes the app, in the buffer, under Alice's session.
   await expect(alice.page.locator("#agent")).toBeVisible()
   await ask(alice, "A todo list everyone shares")
-  await expect(alice.page.locator("#notice")).toContainText("The agent changed")
+  // The commit is Alice's, on main, with the brief as its message: the head moves and main runs the app.
+  await expect(alice.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7}) to main/)
   await seesLine(alice, "<h1>Agent Todo</h1>")
   expect((await ids(alice.page)).map(([, t]) => t).join("\n")).toBe(APP)
-  await expect(alice.page.locator("#message")).toHaveValue("A todo list everyone shares") // the commit message, prefilled
-  await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // no branch of the agent's: it is Alice's buffer
+  await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // no branch of the agent's: it is Alice's
   await expect(alice.page.locator("#session-addr")).toContainText("Alice")
-  await bob.page.goto(alice.page.url()); await seesLine(bob, "<h1>Agent Todo</h1>") // the shared buffer, on Bob's screen too
-
-  // Alice commits: the head moves, main runs the app, and the timeline reads Alice.
-  await alice.page.locator("#commit-btn").click()
-  await expect(alice.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7}) to main/)
   await expect(head(alice.page)).not.toHaveText(mainHead)
   await expect(rows(alice.page)).toHaveCount(2)
+  await expect(rows(alice.page).first()).toContainText("A todo list everyone shares")
   await expect(rows(alice.page).first()).toContainText("Alice")
   await expect(preview(alice.page)).toContainText("Agent Todo")
+  await bob.page.goto(alice.page.url()); await seesLine(bob, "<h1>Agent Todo</h1>") // the shared buffer, on Bob's screen too
 
   // A second brief fits onto the file: every node kept, the heading rewritten in place, one node for the added line.
   const seeded = await ids(alice.page)
   await ask(alice, "Change the heading and add a line")
   await expect.poll(() => alice.page.evaluate(() => typeof globalThis.__agentRelease)).toBe("function") // the model holds at the gate
   await alice.page.evaluate(() => globalThis.__agentRelease())
-  await expect(alice.page.locator("#notice")).toContainText("The agent changed 2 lines")
+  await expect(alice.page.locator("#notice")).toContainText(/Committed ([0-9a-f]{7}) to main/)
   await expect.poll(() => ids(alice.page).then((a) => a.map(([, t]) => t).join("\n"))).toBe(AGAIN) // the repaint lands a frame after the writes
   const after = await ids(alice.page)
   expect(after.filter(([id]) => seeded.some(([sid]) => sid === id)).length).toBe(seeded.length)
   expect(after.length).toBe(seeded.length + 1)
-  await expect(alice.page.locator("#dirty")).toBeVisible() // uncommitted, as any edit: Alice discards it this time
-  await alice.page.locator("#discard").click()
-  await seesLine(alice, "<h1>Agent Todo</h1>")
+  await expect(rows(alice.page)).toHaveCount(3) // a second commit on main, no branch anywhere
+  await expect(branchRows(alice.page)).toHaveCount(1)
 
   // Bob asks the agent on Alice's repository: the shared buffer changes for everyone, and Bob's
   // commit is a fork of his own — the pull request comes from Bob, as it should.
-  await bob.page.evaluate(stub(AGAIN))
-  await ask(bob, "Change the heading and add a line")
+  await bob.page.evaluate(stub(AGAIN.replace("one added", "one added by Bob")))
+  await ask(bob, "Change the line about the addition")
   await expect.poll(() => bob.page.evaluate(() => typeof globalThis.__agentRelease)).toBe("function")
   await bob.page.evaluate(() => globalThis.__agentRelease())
-  await expect(bob.page.locator("#notice")).toContainText("The agent changed 2 lines")
-  await seesLine(alice, "One line changed, one added") // on Alice's screen, live
-  await expect(bob.page.locator("#commit-btn")).toHaveText("Fork and commit")
-  await commit(bob, "Change the heading and add a line")
+  await expect(bob.page.locator("#notice")).toContainText("on your own branch") // the fork the button makes, once
   await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
+  await seesLine(alice, "one added by Bob") // main's shared buffer changed on Alice's screen too; main's head did not move
   await expect(branchRows(alice.page)).toHaveCount(2)
   await tab(bob, "pulls")
   await bob.page.locator('#pr-form [name="title"]').fill("From the agent, via Bob")

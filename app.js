@@ -1241,4 +1241,7 @@ presence()
 render()
 
 // ── The agent: a model in this browser, committing like anyone else ─────────
-mountAgent({ currentBranch, me: () => me, flushSaves, bufferLines: () => [...buffer().children].map((li) => ({ id: li.id, text: fieldOf(li).value, order: orderOf(li) })), putLine, keysBetween, remove: (id) => db.remove(id), proposeMessage: (text) => { $("message").value = text }, notice })
+mountAgent({ currentBranch, me: () => me, flushSaves, bufferLines: () => [...buffer().children].map((li) => ({ id: li.id, text: fieldOf(li).value, order: orderOf(li) })), putLine, keysBetween, remove: (id) => db.remove(id), commit: async (message) => { // the buffer repaints a frame after the writes: press Commit once it shows them
+  for (let i = 0; i < 30 && domText() === contentOf(currentBranch()?.value.head); i++) await new Promise((r) => requestAnimationFrame(r))
+  $("message").value = message; $("commit-form").requestSubmit()
+}, notice })
