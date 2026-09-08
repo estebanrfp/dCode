@@ -325,8 +325,9 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .preview-head { display: flex; align-items: center; gap: var(--s2); flex: none; height: var(--bar); padding: 0 var(--s3); font-size: 12px; color: var(--text-tertiary); border-bottom: 1px solid var(--border-subtle); }
 .preview-head .what { font-family: var(--mono); color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview-head label { display: flex; gap: 4px; align-items: center; }
-.preview { flex: 1 1 52%; min-height: 140px; width: 100%; border: 0; background: var(--preview-bg); }
-.dock { flex: 1 1 48%; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); }
+.preview { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--preview-bg); }
+.dock { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg-secondary); }
+.tab.preview-tab { display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--bg-primary); }
 .tabs { display: flex; align-items: stretch; gap: var(--s1); flex: none; height: var(--bar); padding: 0 var(--s3); border-bottom: 1px solid var(--border-subtle); }
 .tabs button { padding: 0 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-secondary); font-size: 12px; }
 .tabs button.sel { color: var(--text-primary); border-bottom-color: var(--accent); }

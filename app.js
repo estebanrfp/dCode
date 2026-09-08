@@ -864,10 +864,12 @@ const repoSkeleton = (repo) => `<section class="repo">
   <section class="panel edit-panel"><nav class="views" aria-label="View"><button type="button" data-view="html">HTML</button><button type="button" data-view="css">CSS</button><button type="button" data-view="js">JS</button><span class="view-hint" id="view-hint"></span></nav><div id="buffer" class="buffer" aria-label="The shared buffer"></div></section>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the panels" tabindex="0"></div>
   <section class="panel right">
+    <div class="dock">
+      <nav class="tabs" aria-label="Repository"><button type="button" data-tab="preview">Preview</button><button type="button" data-tab="history">History</button><button type="button" data-tab="pulls">Pull requests</button><button type="button" data-tab="branches">Branches</button></nav>
+      <div class="tab preview-tab" id="tab-preview">
     <div class="preview-head">running <span class="what" id="preview-what">—</span><label><input type="checkbox" id="autorun" checked> auto</label><button class="small" data-act="run">Run</button><button class="small" data-act="download" title="The buffer as one .html file — HTML, CSS and JavaScript together, ready to open anywhere">Download .html</button><button class="small" data-act="discard" id="discard">Discard changes</button></div>
     <iframe id="preview" class="preview" sandbox="allow-scripts" title="The running project"></iframe>
-    <div class="dock">
-      <nav class="tabs" aria-label="Repository"><button type="button" data-tab="history">History</button><button type="button" data-tab="pulls">Pull requests</button><button type="button" data-tab="branches">Branches</button></nav>
+      </div>
       <div class="tab" id="tab-history"><div class="graph"><svg id="graph" aria-hidden="true"></svg><ol id="commits"></ol></div><div id="commit-panel" class="commit-panel"></div></div>
       <div class="tab" id="tab-pulls"><ul id="prs" class="prs"></ul><div id="pr-form-box"></div></div>
       <div class="tab" id="tab-branches"><ul id="branches"></ul><div id="branch-form-box"></div><h2 id="collabs-title">Collaborators</h2><ul id="collabs" class="collabs"></ul><div id="collab-form-box"></div><h2 id="members-title" class="hidden">Members</h2><ul id="members" class="members hidden"></ul><div id="member-form-box"></div></div>
@@ -1021,7 +1023,7 @@ const renderRepo = (r, main) => {
   const branches = branchesOf(repo.id), commits = commitsOf(repo.id), prs = prsOf(repo.id)
   const branch = branches.find((b) => b.id === r.branch) ?? defaultBranch(repo, branches)
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
-  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "history"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
+  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "preview"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
   if (branch && main.dataset.branch !== branch.id) { main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
   renderBranches(repo, branches, branch, commits, selected)
   renderPRs(repo, branches, branch, prs)
@@ -1092,11 +1094,11 @@ document.addEventListener("click", async (e) => {
       f.classList.remove("hidden"); f.elements.name.focus(); return
     }
     if (act === "cancel-repo") { $("repo-form")?.classList.add("hidden"); return }
-    if (act === "run") { runPreview(domText(), "the buffer"); return }
+    if (act === "run") { runPreview(domText(), "the buffer"); showTab("preview"); return }
     if (act === "download") { const b = currentBranch(); download(domText(), fileName(b && nodes.get(b.value.repo))); return }
     if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(c.value.content, fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
     if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
-    if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) runPreview(c.value.content, `${short(c.id)} — ${c.value.message}`); return }
+    if (act === "run-commit") { const c = commitOf(a.dataset.commit); if (c) { runPreview(c.value.content, `${short(c.id)} — ${c.value.message}`); showTab("preview") } return }
     if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, c.value.content); notice(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }

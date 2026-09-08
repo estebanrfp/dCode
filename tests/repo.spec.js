@@ -6,7 +6,7 @@
  */
 import { readFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
-import { TEMPLATE_LINES, assertTransport, commit, commitIds, connected, createRepo, freshRoom, go, head, lineIndex, lineWith, lines, loginAs, preview, rows, seesLine, setLine, short, visitor } from "./_helpers.js"
+import { TEMPLATE_LINES, assertTransport, commit, commitIds, connected, createRepo, freshRoom, go, head, lineIndex, lineWith, lines, loginAs, preview, rows, seesLine, setLine, short, tab, visitor } from "./_helpers.js"
 
 test("a repository, its shared buffer and its commits cross to another visitor, with the same ids, and every version runs", async ({ browser }) => {
   const room = freshRoom("repo")
@@ -70,12 +70,14 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   expect(saved.split("\n")).toHaveLength(TEMPLATE_LINES)
 
   // Time travel: the first version, selected in the timeline, runs as it was — and downloads as it was.
+  await tab(bob, "history")
   await rows(bob.page).nth(1).click()
   await expect(bob.page.locator("#commit-panel")).toContainText("root")
   await bob.page.locator('[data-act="run-commit"]').click()
   await expect(bob.page.locator("#preview-what")).toContainText("Initial commit")
   await expect(preview(bob.page)).toContainText("Hello from dCode")
   await expect(preview(bob.page)).not.toContainText("Hello, Bob")
+  await tab(bob, "history") // running a version showed the Preview tab; the version's download lives in History
   const [old] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download-commit"]').click()])
   expect(old.suggestedFilename()).toMatch(/^hello-world-[0-9a-f]{7}\.html$/)
   expect(readFileSync(await old.path(), "utf8")).toContain("Hello from dCode")
