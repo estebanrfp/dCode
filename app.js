@@ -536,11 +536,13 @@ function createLine(id, { repo, branch, text, order }) {
   })
   // While you type, your view is yours; on blur you rejoin the graph's truth,
   // which already holds the LWW outcome of any concurrent edit. A save still
-  // pending is flushed first: your own keystrokes never revert.
+  // pending is flushed first: your own keystrokes never revert. The truth is
+  // read from the store, not from the graph: a sealed line carries `ct` and no
+  // `text` at all, and a raw read would hand this field the word "undefined".
   ta.addEventListener("blur", async () => {
     if (savers.has(id)) { clearTimeout(savers.get(id)); await saveNow(id, li); return }
-    const { result } = await db.get(id)
-    if (result && ta.value !== result.value.text) { ta.value = result.value.text; afterChange() }
+    const text = nodes.get(id)?.value.text
+    if (text !== undefined && ta.value !== text) { ta.value = text; afterChange() }
   })
 
   cell.append(hl, ta); li.append(ln, cell)

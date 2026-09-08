@@ -5,7 +5,7 @@
  * to the authority itself. A revocation turns the key.
  */
 import { expect, test } from "@playwright/test"
-import { ADDR, commit, connected, createRepo, freshRoom, go, inStore, lines, loginAs, persisted, preview, replaceAll, rows, seesLine, setLine, tab, visitor } from "./_helpers.js"
+import { ADDR, commit, connected, createRepo, freshRoom, go, inStore, lineWith, lines, loginAs, persisted, preview, replaceAll, rows, seesLine, setLine, tab, visitor } from "./_helpers.js"
 
 test("a private repository is sealed for everyone but its members; a grant opens it, a revocation turns the key, and the owner reads it back after a reload", async ({ browser }) => {
   const room = freshRoom("private")
@@ -86,6 +86,14 @@ test("a private repository's lines stay sealed on every path that rewrites them 
   await createRepo(alice, "sealed", "", { isPrivate: true })
   const openLines = () => alice.page.evaluate(async () => (await globalThis.db.map({ query: { type: "line" } })).results.filter((n) => typeof n.value.text === "string").length)
   expect(await openLines()).toBe(0)
+
+  // Leaving a sealed line keeps what it says: the blur reconciles against the store,
+  // where the text is open, not against the graph, where a sealed line has none.
+  const line = await lineWith(alice.page, "Hello from dCode")
+  await line.click()
+  await alice.page.locator(".preview-head").click()
+  await expect(line).toHaveValue(/Hello from dCode/)
+  await expect(line).not.toHaveValue("undefined")
 
   // Discard brings the buffer back to the head: the changed line is rewritten under its id — sealed.
   await setLine(alice, "Hello from dCode", "  <h1>SECRET</h1>")
