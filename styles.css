@@ -412,3 +412,6 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 
 /* The door's local reset, for testing: small and quiet, under the identities. */
 .door-reset { margin-top: var(--s2); font-size: 12px; color: var(--text-tertiary); }
+
+/* A repository whose branch has not reached this device: the editor says why it is blank. */
+.waiting { margin: var(--s4); max-width: 52ch; color: var(--text-tertiary); font-size: 13px; line-height: 1.6; }

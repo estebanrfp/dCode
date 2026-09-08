@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908i")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908j")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // The URL says where you are and nothing else: no feature ever writes to it.
 // `?room=` opens a private sandbox of the same site — what the suite gives each
@@ -1038,6 +1038,8 @@ const renderRepo = (r, main) => {
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
   if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "preview"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
   if (branch && main.dataset.branch !== branch.id) { main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
+  // A repository whose branch has not arrived is not an empty file: say so, rather than showing a blank editor that invites typing into nothing.
+  if (!branch && !buffer()?.querySelector(".line")) { main.dataset.branch = ""; buffer().innerHTML = `<p class="waiting">This repository is here, its branch is not. Nothing on this device can open it until a peer that holds the branch is online${me ? "" : " — or sign in and start your own"}.</p>` }
   renderBranches(repo, branches, branch, commits, selected)
   renderPRs(repo, branches, branch, prs)
   renderCollabs(repo, branch)
