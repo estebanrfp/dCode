@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908g")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908h")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // The URL says where you are and nothing else: no feature ever writes to it.
 // `?room=` opens a private sandbox of the same site — what the suite gives each
@@ -1139,6 +1139,14 @@ document.addEventListener("click", async (e) => {
     }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
+    if (a.id === "reset-btn") { // testing, in the door: this device's copy of the graph, gone. It is not a reset of the room and cannot be —
+      // every other peer still holds what it holds and hands back whatever it has on the next connection. What lived only here does go,
+      // which is what makes it worth a button: a graph from an older shape of the app, or ops nobody accepts any more, leave with it.
+      e.preventDefault(); a.disabled = true
+      await db.clear()
+      say("door-status", "This device's copy is gone. What other peers still hold comes back on its own.")
+      a.disabled = false; return
+    }
     if (a.classList.contains("demo-login")) {
       e.preventDefault(); const id = DEMO_IDENTITIES.find((i) => eqAddr(i.address, a.dataset.address))
       try { await db.sm.loginOrRecoverUserWithMnemonic(id.mnemonic) } catch { say("door-status", "Could not sign in.") } return

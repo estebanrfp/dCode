@@ -409,3 +409,6 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 
 /* Testing, on the home page: small and quiet, under the list. */
 .testing { margin-top: var(--s4); font-size: 12px; color: var(--text-tertiary); }
+
+/* The door's local reset, for testing: small and quiet, under the identities. */
+.door-reset { margin-top: var(--s2); font-size: 12px; color: var(--text-tertiary); }
