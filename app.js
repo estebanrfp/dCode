@@ -1077,6 +1077,9 @@ document.addEventListener("click", async (e) => {
   const li = e.target.closest("li[data-commit]")
   if (li) { const r = route(); location.hash = `#/r/${r.repo}/${$("main").dataset.branch}/${li.dataset.commit}`; return }
   if (e.target === buffer() && !buffer().children.length && me) { await insertAfter(null); return } // an empty buffer: click to start a line
+  if (e.target === buffer() || e.target.classList?.contains("edit-panel")) { // the space under the last line is the editor too: the caret goes to its end
+    const last = [...buffer()?.children ?? []].filter(shown).at(-1); if (last) caretTo(last, fieldOf(last).value.length); return
+  }
   const a = e.target.closest("a, button"); if (!a) return
   const act = a.dataset.act
   try {

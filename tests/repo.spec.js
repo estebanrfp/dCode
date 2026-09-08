@@ -112,6 +112,10 @@ test("the views are filters over one file: CSS shows the <style> block and JS th
   await alice.page.locator('.views [data-view="js"]').click()
   await expect(visible(alice.page)).toHaveCount(2)
   expect(await numbers(alice.page)).toEqual(["18", "19"])
+  // The space under the last line is the editor too: a click there puts the caret at the end of the last line shown.
+  await alice.page.locator("#buffer").click({ position: { x: 300, y: 400 } })
+  await expect(alice.page.locator("#buffer .line:focus-within textarea")).toHaveValue(/^  document\.getElementById/)
+  expect(await alice.page.evaluate(() => document.activeElement.selectionStart === document.activeElement.value.length)).toBe(true)
 
   // An edit in the CSS view is an edit of the same node: Bob sees it on line 8 — in his CSS view, where the block is shown.
   await alice.page.locator('.views [data-view="css"]').click()
