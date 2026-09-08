@@ -384,3 +384,12 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
   .repos li { grid-template-columns: 1fr; }
   .repos .meta { text-align: left; }
 }
+
+/* The agent: one prompt box, bottom right, over everything. */
+.agent { position: fixed; right: var(--s4); bottom: 44px; z-index: 30; display: flex; align-items: center; gap: var(--s2); width: min(520px, calc(100vw - 2 * var(--s4))); padding: var(--s2); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+.agent-brief { flex: 1; min-width: 0; padding: var(--s2) var(--s3); background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font: 13px/1.4 var(--font); }
+.agent-brief:focus { outline: none; border-color: var(--accent); }
+.agent-brief:disabled { color: var(--text-tertiary); }
+.agent-go { flex: none; width: 32px; height: 32px; border: none; border-radius: 6px; background: var(--accent); color: var(--text-on-accent); font-size: 12px; cursor: pointer; }
+.agent-go:hover { background: var(--accent-hover); }
+.agent-status { position: absolute; left: var(--s3); bottom: calc(100% + var(--s1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.4 var(--mono); color: var(--text-secondary); }

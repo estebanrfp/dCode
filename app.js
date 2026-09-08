@@ -11,6 +11,7 @@
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
 import { CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "./constitution.js"
+import { mountAgent } from "./agent.js"
 
 const $ = (id) => document.getElementById(id)
 const eqAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
@@ -1238,3 +1239,6 @@ db.room?.on("peer:join", (peerId) => { presence(); if (lastSent?.block) presence
 db.room?.on("peer:leave", (peerId) => { peerAt.delete(peerId); renderMarks(); presence() })
 presence()
 render()
+
+// ── The agent: a model in this browser, committing like anyone else ─────────
+mountAgent({ currentBranch, me: () => me, create, patch, newCommit, putLine, contentOf, runPreview, short, notice })

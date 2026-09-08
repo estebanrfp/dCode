@@ -80,6 +80,11 @@
   <footer class="footer">
     <a href="#/constitution">Constitution</a> · <a href="https://github.com/estebanrfp/gdb" target="_blank" rel="noopener">Built with GenosDB ★</a> · <a href="https://github.com/estebanrfp/dCode" target="_blank" rel="noopener">Source</a> · <span id="presence" class="presence">0 peers</span>
   </footer>
+  <form id="agent" class="agent" hidden autocomplete="off" aria-label="The agent">
+    <span id="agent-status" class="agent-status" hidden></span>
+    <input type="text" id="agent-brief" class="agent-brief" placeholder="Ask the agent for an app — it commits on a branch of its own" maxlength="400" required>
+    <button type="submit" id="agent-go" class="agent-go" title="Build it" aria-label="Build it">▶</button>
+  </form>
   <script type="module" src="app.js"></script>
 </body>
 
