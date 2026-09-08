@@ -780,8 +780,7 @@ const reposPage = () => {
     return `<li><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}<span class="meta">${plural(branches.length, "branch")} · ${plural(commits.length, "commit")}${commits[0] ? ` · ${ago(commits[0].value.at)}` : ""}</span><span class="desc">${esc(r.value.description) || "<span class=\"dim\">no description</span>"} <span class="dim">— by ${esc(nameOf(r.value.owner))}</span></span></li>`
   })
   return `<div class="page"><h1>Repositories</h1><p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone. ${me ? `<a href="#/new">Create one</a>.` : `<a href="#/login">Sign in</a> to create one.`}</p>
-${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}
-${eqAddr(me, AUTHORITY) ? `<p class="muted testing">Testing, as the authority: <button class="small ghost" data-act="reset-room" title="db.clear() on this device — every node of this room goes; peers that still hold the graph bring it back when they connect">Reset this room's graph on this device</button></p>` : ""}</div>`
+${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}</div>`
 }
 const newPage = () => (me
   ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
@@ -1102,11 +1101,6 @@ document.addEventListener("click", async (e) => {
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
     if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
-    if (act === "reset-room") { // testing only, the authority only, asked twice: db.clear() wipes this device; the local mirror is cleared by hand, since clear() is not a stream of removals the subscription can follow
-      if (!a.dataset.armed) { a.dataset.armed = "1"; a.textContent = "Reset, really?"; setTimeout(() => { a.dataset.armed = ""; a.textContent = "Reset this room's graph on this device" }, 4000); return }
-      await db.clear(); nodes.clear(); plain.clear(); pendingMerge.clear(); keyRings.clear()
-      notice("This device's graph is empty. Peers still holding the room bring it back when they connect — reset them too, or open a new room."); location.hash = "#/"; scheduleRender(); return
-    }
     if (act === "delete-branch") { // yours, never the default: asked twice, then the buffer's lines go and the branch node goes; the commits are history and stay
       if (!a.dataset.armed) { a.dataset.armed = "1"; a.textContent = "Delete, really?"; setTimeout(() => { a.dataset.armed = ""; a.textContent = "Delete" }, 4000); return }
       const b = nodes.get(a.dataset.branch); if (!b) return
@@ -1117,6 +1111,11 @@ document.addEventListener("click", async (e) => {
     }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
+    if (a.id === "reset-btn") { // testing, in the door — before anything is under way: db.clear() wipes this device; the local mirrors are cleared by hand, since clear() is not a stream of removals the subscription can follow
+      e.preventDefault(); a.disabled = true
+      await db.clear(); nodes.clear(); plain.clear(); pendingMerge.clear(); keyRings.clear(); scheduleRender()
+      say("door-status", "This device's graph is empty. Peers still holding the room bring it back when they connect — reset them too, or open a new room."); a.disabled = false; return
+    }
     if (a.classList.contains("demo-login")) {
       e.preventDefault(); const id = DEMO_IDENTITIES.find((i) => eqAddr(i.address, a.dataset.address))
       try { await db.sm.loginOrRecoverUserWithMnemonic(id.mnemonic) } catch { say("door-status", "Could not sign in.") } return

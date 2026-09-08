@@ -167,7 +167,8 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .field-action:hover:not(:disabled) { color: var(--text-primary); border-color: transparent; }
 .modal-actions { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
 .modal-actions button { width: 100%; padding: 13px var(--s4); font-size: 14px; font-weight: 600; }
-.demo-logins { display: contents; }
+.demo-logins { display: flex; gap: var(--s2); } /* the three demo identities on one row */
+.demo-logins button { flex: 1; width: auto; padding: 10px var(--s2); font-size: 13px; white-space: nowrap; }
 .modal-warn { display: grid; place-items: center; min-height: 45px; margin: var(--s2) 0 0; font-size: 13px; font-weight: 600; color: var(--warn); }
 .modal-status { min-height: 18px; margin: var(--s2) 0 0; font-size: 12px; color: var(--text-tertiary); }
 .modal-status:empty { display: none; }
@@ -397,5 +398,5 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .agent-status { position: absolute; right: 0; bottom: calc(100% + var(--s1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.4 var(--mono); color: var(--text-secondary); }
 @media (max-width: 720px) { .footer { flex-wrap: wrap; } .agent { width: 100%; } }
 
-/* The authority's testing line on the home page. */
-.testing { margin-top: var(--s5); font-size: 12px; }
+/* The door's reset, for testing: small and quiet, under the identities. */
+.door-reset { margin-top: var(--s2); font-size: 12px; color: var(--text-tertiary); }

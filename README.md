@@ -45,7 +45,7 @@ Nothing leaves the machine: the weights (`Qwen2.5-Coder`, 7B by default, 3B and 
 
 ## Testing
 
-Signed in as the authority — the Superadmin demo identity — the home page offers **Reset this room's graph on this device**, asked twice: `db.clear()` wipes every node held here. It is a device's reset, not the room's: a peer that still holds the graph brings it back when it connects, so reset every peer of a test room, or open a fresh one with `?room=`.
+The door — the identity dialog every visit without a session starts at — offers **Reset this device's graph (testing)** under the identities: `db.clear()` wipes every node held here, before anything is under way. It is a device's reset, not the room's: a peer that still holds the graph brings it back when it connects, so reset every peer of a test room, or open a fresh one with `?room=`.
 
 ## The constitution
 
@@ -90,7 +90,7 @@ Playwright, one `BrowserContext` per simulated visitor (own storage, own identit
 - `tests/sync.spec.js` — a repository and a commit made with no peer in sight, read back from this device's disk with its buffer and delivered once it is back.
 - `tests/private.spec.js` — a private repository: the authority itself meets the locked door and holds only ciphertext on its disk, a grant opens Bob's page on its own, a member's sealed lines reach the other member in clear and nobody else, a revocation closes his page and seals what comes after with a new key, and the owner reads everything back after a reload — with no plaintext ever written to any disk, hers included.
 - `tests/agent.spec.js` — the agent as your own hands, with the model replaced by a stub that streams a fixed file: the template becoming the app in the buffer under Alice's session, on Bob's screen too, committed to main as hers with the brief as the message; a second brief fitted onto the file with every node kept, the heading rewritten in place, one node for the added line and a second commit on main with no branch anywhere; and Bob asking on Alice's repository — the shared buffer changing for everyone, the fork the button makes for him, the pull request from him.
-- `tests/session.spec.js` — the identity view: a session opened with a phrase protected with a passkey there (Playwright's virtual authenticator), resumed silently after a reload and reopened with the passkey; the theme toggle cycling system → light → dark, kept across a reload and following the OS on `system`. The authority's reset on the home page, asked twice, emptying this device; a guest sees no such button.
+- `tests/session.spec.js` — the identity view: a session opened with a phrase protected with a passkey there (Playwright's virtual authenticator), resumed silently after a reload and reopened with the passkey; the theme toggle cycling system → light → dark, kept across a reload and following the OS on `system`. The door's reset for testing, emptying this device with the room coming back empty behind it.
 
 Signalling goes through the public relays; set `DCODE_RELAY=ws://…` to use a local one, which makes discovery immediate.
 

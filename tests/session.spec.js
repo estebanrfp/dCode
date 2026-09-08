@@ -57,23 +57,19 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await v.close()
 })
 
-test("the authority alone can reset this device's graph from the home page, asked twice; a guest sees no such button", async ({ browser }) => {
+test("the door offers a reset for testing: this device's graph goes, and the room comes back empty behind the door", async ({ browser }) => {
   const room = freshRoom("reset")
   const v = await visitor(browser, room)
-  await loginAs(v, "Superadmin")
+  await loginAs(v, "Alice")
   await createRepo(v, "throwaway")
   await go(v, "#/")
   await expect(v.page.locator(".repos li")).toHaveCount(1)
-  await v.page.locator('[data-act="reset-room"]').click()
-  await expect(v.page.locator('[data-act="reset-room"]')).toHaveText("Reset, really?")
-  await v.page.locator('[data-act="reset-room"]').click()
-  await expect(v.page.locator("#notice")).toContainText("This device's graph is empty")
+  await v.page.locator("#logout-btn").click() // signed out is the door's state
+  await expect(door(v.page)).toHaveAttribute("open", "")
+  await v.page.locator("#reset-btn").click()
+  await expect(v.page.locator("#door-status")).toContainText("This device's graph is empty")
+  await dismissDoor(v)
   await expect(v.page.locator(".repos li")).toHaveCount(0)
   await expect(v.page.locator(".empty")).toContainText("No repositories in this room yet")
-  await v.page.locator("#logout-btn").click()
-  await loginAs(v, "Alice")
-  await go(v, "#/")
-  await expect(v.page.locator('[data-act="reset-room"]')).toHaveCount(0)
   await v.close()
 })
-
