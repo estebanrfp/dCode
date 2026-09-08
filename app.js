@@ -38,10 +38,11 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908f")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908g")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
-// `?room=` opens a private sandbox of the same site (the tests use it, so can
-// you); `?relay=` points signalling at a relay of your own.
+// The URL says where you are and nothing else: no feature ever writes to it.
+// `?room=` opens a private sandbox of the same site — what the suite gives each
+// run so it starts empty; `?relay=` points signalling at a relay of your own.
 const params = new URLSearchParams(location.search)
 const ROOM = params.get("room") ?? "dcode"
 const RELAY = params.get("relay")
@@ -786,7 +787,8 @@ const reposPage = () => {
     return `<li><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}<span class="meta">${plural(branches.length, "branch")} · ${plural(commits.length, "commit")}${commits[0] ? ` · ${ago(commits[0].value.at)}` : ""}</span><span class="desc">${esc(r.value.description) || "<span class=\"dim\">no description</span>"} <span class="dim">— by ${esc(nameOf(r.value.owner))}</span></span></li>`
   })
   return `<div class="page"><h1>Repositories</h1><p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone. ${me ? `<a href="#/new">Create one</a>.` : `<a href="#/login">Sign in</a> to create one.`}</p>
-${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}</div>`
+${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}
+${repos().some((r) => eqAddr(r.value.owner, me)) ? `<p class="testing">Testing: <button type="button" class="small ghost" data-act="delete-mine" title="Remove the repositories you own — the lines, the branches, the commits and pull requests you signed — as writes every peer accepts">Delete my repositories</button></p>` : ""}</div>`
 }
 const newPage = () => (me
   ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
@@ -1120,16 +1122,23 @@ document.addEventListener("click", async (e) => {
       notice(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
       if (standing) location.hash = `#/r/${b.value.repo}`; return
     }
+    if (act === "delete-mine") { // testing, on the home page: what you own, removed as writes every peer accepts. `db.clear()` would wipe
+      // this device alone and the room would hand the graph straight back, so what leaves has to leave as signed removals: the lines of
+      // every branch, then the branches, commits and pull requests you signed, the vault of a private one, and last the repository node.
+      if (!a.dataset.armed) { a.dataset.armed = "1"; a.textContent = "Delete them, really?"; setTimeout(() => { a.dataset.armed = ""; a.textContent = "Delete my repositories" }, 4000); return }
+      a.disabled = true
+      for (const r of repos().filter((x) => eqAddr(x.value.owner, me))) {
+        const branches = branchesOf(r.id)
+        await Promise.all(branches.flatMap((b) => linesOf(b.id).map((n) => db.remove(n.id))))
+        await Promise.all([...commitsOf(r.id), ...prsOf(r.id), ...branches].filter((n) => eqAddr(n.value.owner, me)).map((n) => db.remove(n.id)))
+        if (r.value.vault) await db.sm.remove(r.value.vault).catch(() => {})
+        await db.remove(r.id)
+      }
+      notice("Your repositories are gone, on every peer. What others forked or committed of them is theirs and stays.")
+      a.disabled = false; a.dataset.armed = ""; a.textContent = "Delete my repositories"; scheduleRender(); return
+    }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
-    if (a.id === "reset-btn") { // testing, in the door — before anything is under way. A reset in a P2P database is a NEW ROOM: db.clear()
-      // wipes this device's copy, but every other tab, browser and visitor still holds the graph and would hand it back on the next
-      // connection. So this window moves to a fresh room, empty from its first second; its URL is what to open elsewhere to meet there.
-      e.preventDefault(); a.disabled = true
-      await db.clear()
-      const next = new URLSearchParams(location.search); next.set("room", `test-${Date.now().toString(36)}`)
-      location.replace(`${location.pathname}?${next}#/`); return
-    }
     if (a.classList.contains("demo-login")) {
       e.preventDefault(); const id = DEMO_IDENTITIES.find((i) => eqAddr(i.address, a.dataset.address))
       try { await db.sm.loginOrRecoverUserWithMnemonic(id.mnemonic) } catch { say("door-status", "Could not sign in.") } return

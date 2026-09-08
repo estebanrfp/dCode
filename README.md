@@ -45,7 +45,7 @@ Nothing leaves the machine: the weights (`Qwen2.5-Coder`, 7B by default, 3B and 
 
 ## Testing
 
-The door — the identity dialog every visit without a session starts at — offers **Reset: a fresh room (testing)** under the identities. A reset in a peer-to-peer database is a new room: `db.clear()` wipes this device's copy, but every other tab, browser and visitor still holds the graph and would hand it back on the next connection, so the button moves this window to a fresh room, empty from its first second, and puts its name in the URL (`?room=…`) — open that URL elsewhere to meet there.
+Signed in, the home page offers **Delete my repositories**, asked twice: every repository you own goes, with its branches, commits, pull requests and lines — on every peer, since a removal is a signed write like any other. Forks and commits by other people are theirs and stay. It is the one honest reset in a peer-to-peer room: what is yours goes everywhere; a room cannot be emptied of what is not yours, and the URL never changes for it — everyone who opens dCode is in the same room.
 
 ## The constitution
 
@@ -90,7 +90,7 @@ Playwright, one `BrowserContext` per simulated visitor (own storage, own identit
 - `tests/sync.spec.js` — a repository and a commit made with no peer in sight, read back from this device's disk with its buffer and delivered once it is back.
 - `tests/private.spec.js` — a private repository: the authority itself meets the locked door and holds only ciphertext on its disk, a grant opens Bob's page on its own, a member's sealed lines reach the other member in clear and nobody else, a revocation closes his page and seals what comes after with a new key, and the owner reads everything back after a reload — with no plaintext ever written to any disk, hers included.
 - `tests/agent.spec.js` — the agent as your own hands, with the model replaced by a stub that streams a fixed file: the template becoming the app in the buffer under Alice's session, on Bob's screen too, committed to main as hers with the brief as the message; a second brief fitted onto the file with every node kept, the heading rewritten in place, one node for the added line and a second commit on main with no branch anywhere; and Bob asking on Alice's repository — the shared buffer changing for everyone, the fork the button makes for him, the pull request from him.
-- `tests/session.spec.js` — the identity view: a session opened with a phrase protected with a passkey there (Playwright's virtual authenticator), resumed silently after a reload and reopened with the passkey; the theme toggle cycling system → light → dark, kept across a reload and following the OS on `system`. The door's reset for testing: this device wiped and moved to a fresh, empty room named in the URL.
+- `tests/session.spec.js` — the identity view: a session opened with a phrase protected with a passkey there (Playwright's virtual authenticator), resumed silently after a reload and reopened with the passkey; the theme toggle cycling system → light → dark, kept across a reload and following the OS on `system`. Delete my repositories, asked twice: gone on both peers; a visitor who owns nothing has no such button; the URL never changes.
 
 Signalling goes through the public relays; set `DCODE_RELAY=ws://…` to use a local one, which makes discovery immediate.
 

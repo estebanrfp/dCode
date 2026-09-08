@@ -57,20 +57,21 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await v.close()
 })
 
-test("the door's reset for testing wipes this device and moves it to a fresh, empty room", async ({ browser }) => {
-  const room = freshRoom("reset")
-  const v = await visitor(browser, room)
-  await loginAs(v, "Alice")
-  await createRepo(v, "throwaway")
-  await go(v, "#/")
-  await expect(v.page.locator(".repos li")).toHaveCount(1)
-  await v.page.locator("#logout-btn").click() // signed out is the door's state
-  await expect(door(v.page)).toHaveAttribute("open", "")
-  await v.page.locator("#reset-btn").click()
-  await expect(v.page).toHaveURL(/room=test-[a-z0-9]+/) // a new room, in the URL: what to open elsewhere to meet there
-  await expect(v.page).not.toHaveURL(new RegExp(`room=${room}`))
-  await expect(door(v.page)).toHaveAttribute("open", "", { timeout: 60_000 }) // booted again, no session, the door
-  await dismissDoor(v)
-  await expect(v.page.locator(".empty")).toContainText("No repositories in this room yet")
-  await v.close()
+test("delete my repositories, for testing: what is yours goes on every peer; a visitor who owns nothing has no such button", async ({ browser }) => {
+  const room = freshRoom("delete-mine")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "Alice"); await loginAs(bob, "Bob")
+  await createRepo(alice, "throwaway")
+  await go(bob, "#/")
+  await expect(bob.page.locator(".repos li")).toHaveCount(1) // Bob holds it
+  await expect(bob.page.locator('[data-act="delete-mine"]')).toHaveCount(0) // and owns nothing to delete
+  await go(alice, "#/")
+  await alice.page.locator('[data-act="delete-mine"]').click()
+  await expect(alice.page.locator('[data-act="delete-mine"]')).toHaveText("Delete them, really?")
+  await alice.page.locator('[data-act="delete-mine"]').click()
+  await expect(alice.page.locator("#notice")).toContainText("Your repositories are gone")
+  await expect(alice.page.locator(".repos li")).toHaveCount(0)
+  await expect(bob.page.locator(".repos li")).toHaveCount(0) // gone on the other side of the wire
+  await expect(alice.page).toHaveURL(new RegExp(`room=${room}`)) // the URL never changes: the room is not the user's business
+  await alice.close(); await bob.close()
 })
