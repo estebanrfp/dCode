@@ -77,7 +77,7 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(bob.page.locator("#preview-what")).toContainText("Initial commit")
   await expect(preview(bob.page)).toContainText("Hello from dCode")
   await expect(preview(bob.page)).not.toContainText("Hello, Bob")
-  await expect(bob.page.locator("#dirty")).toBeHidden() // reading a version wrote nothing
+  await expect(bob.page.locator("#dirty")).toHaveText("· read-only") // the bar says what is on screen, and it is not the buffer
   await expect(bob.page.locator("#buffer")).toHaveAttribute("data-readonly", "1") // and the editor shows it, in read-only
   await expect(bob.page.locator(".line textarea").first()).toHaveJSProperty("readOnly", true)
   await expect(bob.page.locator("#commit-btn")).toBeDisabled()
@@ -86,9 +86,10 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   expect(old.suggestedFilename()).toMatch(/^hello-world-[0-9a-f]{7}\.html$/)
   expect(readFileSync(await old.path(), "utf8")).toContain("Hello from dCode")
 
-  // Letting go of the version brings the branch's buffer back, as it was left.
-  await bob.page.locator("#commit-hint a").click()
+  // Letting go of the version — the same row again — brings the branch's buffer back.
+  await bob.page.locator("#commits li.sel").click()
   await expect(bob.page.locator("#buffer")).not.toHaveAttribute("data-readonly", "1")
+  await expect(bob.page.locator("#dirty")).toBeHidden() // and reading it wrote nothing
   await seesLine(bob, "Hello, Bob, from dCode")
 
   await assertTransport(bob)

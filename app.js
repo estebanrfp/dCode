@@ -907,7 +907,6 @@ const repoSkeleton = (repo) => `<section class="repo">
   <select id="branch-select" aria-label="Branch"></select>
   <span class="head" id="head-label"></span><span class="dirty hidden" id="dirty">· uncommitted changes</span>
   <form id="commit-form" class="commit-form"><input type="text" name="message" id="message" maxlength="120" autocomplete="off" placeholder="Commit message" required><button type="submit" class="primary" id="commit-btn">Commit</button></form>
-  <span class="hint" id="commit-hint"></span>
   <form id="repo-form" class="repo-form row hidden"><input type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" aria-label="Name"><input type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line" aria-label="Description"><button type="submit" class="small primary">Save</button><button type="button" class="small" data-act="cancel-repo">Cancel</button></form>
   <div id="merge-banner" class="merge-banner hidden"></div>
 </div>
@@ -992,15 +991,17 @@ function renderRepoBar() {
   $("repo-name").textContent = repo.value.name; $("repo-name").title = repo.value.description
   $("repo-lock").classList.toggle("hidden", !repo.value.vault)
   $("edit-repo").classList.toggle("hidden", !eqAddr(repo.value.owner, me))
-  $("head-label").textContent = `@ ${short(branch.value.head)}`
-  $("dirty").classList.toggle("hidden", !dirty)
+  $("head-label").textContent = viewing ? `@ ${short(viewing)}` : `@ ${short(branch.value.head)}`
+  $("dirty").textContent = viewing ? "· read-only" : "· uncommitted changes"
+  $("dirty").title = viewing ? "A version from the timeline. Click its row again to come back to the buffer." : ""
+  $("dirty").classList.toggle("hidden", !dirty && !viewing)
   $("discard").disabled = !dirty
   $("commit-btn").textContent = viewing ? "Reading a version" : !me ? "Sign in to commit" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
   $("commit-btn").disabled = !me || !!viewing
   // Why the button says what it says belongs to the button. The line below the
   // bar is for what you can act on, and appears only then.
   $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
-  $("commit-hint").innerHTML = viewing ? `${esc(short(viewing))} as it was, read-only. <a href="#/r/${esc(repo.id)}/${esc(branch.id)}">Back to the buffer</a>` : ""
+
   const banner = $("merge-banner")
   banner.classList.toggle("hidden", !merging)
   if (merging) banner.textContent = `Merging ${short(merging.parents[0])}: resolve the conflict markers (<<<<<<<, =======, >>>>>>>) and commit. The commit will have two parents.`
@@ -1174,7 +1175,7 @@ document.addEventListener("keydown", (event) => {
 // ── Events ──────────────────────────────────────────────────────────────────
 document.addEventListener("click", async (e) => {
   const li = e.target.closest("li[data-commit]")
-  if (li) { const r = route(); location.hash = at(r.repo, $("main").dataset.branch, li.dataset.commit); return }
+  if (li) { const r = route(); location.hash = at(r.repo, $("main").dataset.branch || currentBranch()?.id, r.commit === li.dataset.commit ? undefined : li.dataset.commit); return } // the same row again: back to the buffer
   if (e.target === buffer() && !buffer().children.length && me && current && !readOnlyView()) { await insertAfter(null); return } // an empty buffer: click to start a line (not before its branch is here)
   if (e.target === buffer() || e.target.classList?.contains("edit-panel")) { // the space under the last line is the editor too: the caret goes to its end
     const last = [...buffer()?.children ?? []].filter(shown).at(-1); if (last) caretTo(last, fieldOf(last).value.length); return
