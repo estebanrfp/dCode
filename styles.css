@@ -78,6 +78,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Scroll without scrollbars: every panel scrolls, none shows a bar — the wheel, the trackpad and the keys still move it. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
 
 html, body { height: 100%; }
 body {
