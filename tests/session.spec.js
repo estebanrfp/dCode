@@ -57,6 +57,23 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await v.close()
 })
 
+test("a star is a node its author owns: it crosses, it counts once per person, and taking it back removes it", async ({ browser }) => {
+  const room = freshRoom("stars")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "Alice"); await loginAs(bob, "Bob")
+  const { repo } = await createRepo(alice, "starred")
+  await go(alice, "#/"); await go(bob, "#/")
+  const star = bob.page.locator(`[data-act="star"][data-repo="${repo}"]`)
+  await expect(star).toHaveText("★ 0")
+  await star.click()
+  await expect(star).toHaveText("★ 1")
+  await expect(alice.page.locator(`[data-act="star"][data-repo="${repo}"]`)).toHaveText("★ 1") // it crossed
+  await star.click() // taken back
+  await expect(star).toHaveText("★ 0")
+  await expect(alice.page.locator(`[data-act="star"][data-repo="${repo}"]`)).toHaveText("★ 0")
+  await alice.close(); await bob.close()
+})
+
 test("delete my repositories, for testing: what is yours goes on every peer; a visitor who owns nothing has no such button", async ({ browser }) => {
   const room = freshRoom("delete-mine")
   const alice = await visitor(browser, room), bob = await visitor(browser, room)

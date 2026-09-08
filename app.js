@@ -61,6 +61,10 @@ const repos = () => of("repo").sort(byNewest)
 const branchesOf = (repo) => of("branch").filter((n) => n.value.repo === repo).sort(byOldest)
 const commitsOf = (repo) => of("commit").filter((n) => n.value.repo === repo).sort(byNewest)
 const prsOf = (repo) => of("pr").filter((n) => n.value.repo === repo).sort(byNewest)
+const starsOf = (repo) => of("star").filter((n) => n.value.repo === repo)
+const myStar = (repo) => starsOf(repo).find((n) => eqAddr(n.value.owner, me))
+/** A fork here is a branch someone else owns in the repository — the shape dCode already had. */
+const forksOf = (repo, branches) => new Set(branches.filter((b) => !eqAddr(b.value.owner, repo.value.owner)).map((b) => b.value.owner.toLowerCase())).size
 const linesOf = (branch) => of("line").filter((n) => n.value.branch === branch).sort(byOrder)
 const commitOf = (id) => (id && nodes.get(id)?.value.type === "commit" ? nodes.get(id) : null)
 const contentOf = (id) => commitOf(id)?.value.content ?? plain.get(id) ?? ""
@@ -824,14 +828,28 @@ setInterval(() => { // after the caret leaves the buffer, "left" is repeated twi
 }, 2000)
 
 // ── Views ───────────────────────────────────────────────────────────────────
-const reposPage = () => {
-  const rows = repos().map((r) => {
-    const branches = branchesOf(r.id), commits = commitsOf(r.id)
-    return `<li><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}<span class="meta">${plural(branches.length, "branch")} · ${plural(commits.length, "commit")}${commits[0] ? ` · ${ago(commits[0].value.at)}` : ""}</span><span class="desc">${esc(r.value.description) || "<span class=\"dim\">no description</span>"} <span class="dim">— by ${esc(nameOf(r.value.owner))}</span></span></li>`
+let repoQuery = "" // the search box types into this; only the list under it is redrawn, so the box keeps the caret
+/** The list alone, so a keystroke in the search box costs a list and not a page. */
+const repoList = () => {
+  const q = repoQuery.trim().toLowerCase()
+  const match = (r) => !q || [r.value.name, r.value.description, nameOf(r.value.owner)].some((t) => (t ?? "").toLowerCase().includes(q))
+  const shown = repos().filter(match).map((r) => {
+    const branches = branchesOf(r.id), stars = starsOf(r.id).length, forks = forksOf(r, branches), last = commitsOf(r.id)[0]
+    return `<li>
+<div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
+<button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me ? "" : "disabled"}>★ ${stars}</button></div>
+<p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
+<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch")}</span><span title="People with a branch of their own here">${plural(forks, "fork")}</span><span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
   })
-  return `<div class="page"><h1>Repositories</h1><p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone. ${me ? `<a href="#/new">Create one</a>.` : `<a href="#/login">Sign in</a> to create one.`}</p>
-${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</div>`}
-${repos().some((r) => eqAddr(r.value.owner, me)) ? `<p class="testing">Testing: <button type="button" class="small ghost" data-act="delete-mine" title="Remove the repositories you own — the lines, the branches, the commits and pull requests you signed — as writes every peer accepts">Delete my repositories</button></p>` : ""}</div>`
+  return shown.length ? `<ul class="repos">${shown.join("")}</ul>` : `<div class="empty">${q ? `Nothing matches “${esc(repoQuery)}”.` : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`
+}
+const reposPage = () => {
+  const mine = repos().filter((r) => eqAddr(r.value.owner, me))
+  return `<div class="page repos-page">
+<header class="repos-head"><h1>Repositories</h1><input type="search" id="repo-search" class="repo-search" placeholder="Search name, description or author" aria-label="Search repositories" value="${esc(repoQuery)}">${me ? `<a class="btn primary" href="#/new">New repository</a>` : `<a class="btn" href="#/login">Sign in</a>`}</header>
+<p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone.</p>
+<div id="repo-list">${repoList()}</div>
+${mine.length ? `<p class="testing">Testing: <button type="button" class="small ghost" data-act="delete-mine" title="Remove the repositories you own — the lines, the branches, the commits and pull requests you signed — as writes every peer accepts">Delete my repositories</button></p>` : ""}</div>`
 }
 const newPage = () => (me
   ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
@@ -1229,6 +1247,12 @@ document.addEventListener("click", async (e) => {
       toast(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
       if (standing) location.hash = `#/r/${b.value.repo}`; return
     }
+    if (act === "star") {
+      if (!me) return toast("Sign in to star a repository.", "error")
+      const mine = myStar(a.dataset.repo)
+      await (mine ? db.remove(mine.id) : create({ type: "star", repo: a.dataset.repo }))
+      return // the subscription repaints: a star is a node like any other, and everyone counts the same set
+    }
     if (act === "delete-mine") { // testing, on the home page: what you own, removed as writes every peer accepts. `db.clear()` would wipe
       // this device alone and the room would hand the graph straight back, so what leaves has to leave as signed removals: the lines of
       // every branch, then the branches, commits and pull requests you signed, the vault of a private one, and last the repository node.
@@ -1327,6 +1351,7 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "branch-select") { const r = route(); location.hash = at(r.repo, e.target.value) }
   if (e.target.id === "autorun" && e.target.checked) afterChange()
 })
+document.addEventListener("input", (e) => { if (e.target.id === "repo-search" && $("repo-list")) { repoQuery = e.target.value; $("repo-list").innerHTML = repoList() } })
 document.addEventListener("focusout", () => { if (dirtyWhileTyping) { dirtyWhileTyping = false; scheduleRender() } })
 addEventListener("hashchange", () => { if (!document.activeElement?.closest(".line")) document.activeElement?.blur(); render() })
 
@@ -1353,7 +1378,7 @@ db.sm.setSecurityStateChangeCallback((state) => {
 // which is how a member's page learns to ask for the key again, on its own.
 const chains = new Map() // per node: sealed values open in arrival order
 const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).then(fn, fn); chains.set(id, p); return p }
-await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
+await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line", "star"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
   if (value && value.type === undefined) {
     const repo = of("repo").find((r) => r.value.vault && id.endsWith(r.value.vault))

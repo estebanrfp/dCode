@@ -212,11 +212,27 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .page { width: 100%; max-width: 880px; margin: 0 auto; }
 .page .lede { color: var(--text-secondary); max-width: 72ch; }
 .repos { list-style: none; margin: var(--s4) 0 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-secondary); }
-.repos li { display: grid; grid-template-columns: 1fr auto; gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border-subtle); }
+.repos li { display: block; padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border-subtle); }
 .repos li:last-child { border-bottom: none; }
+.repos li:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
 .repos .name { font: 600 15px var(--mono); }
-.repos .desc { grid-column: 1 / -1; color: var(--text-secondary); }
-.repos .meta { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; text-align: right; }
+.repos .desc { margin: var(--s1) 0 0; color: var(--text-secondary); }
+.repo-head { display: flex; align-items: center; gap: var(--s2); }
+.repo-meta { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: var(--s2) 0 0; color: var(--text-tertiary); font-size: 12px; }
+.repo-meta .by { margin-left: auto; }
+.repo-meta .when { white-space: nowrap; }
+/* The star is a node you own: pressing it writes one, pressing it again removes it. */
+.star { margin-left: auto; padding: 2px 8px; border: 1px solid var(--border-strong); border-radius: 999px; background: none; color: var(--text-secondary); font: 12px/18px var(--mono); cursor: pointer; }
+.star:hover:not(:disabled) { border-color: var(--warn); color: var(--warn); }
+.star.on { border-color: var(--warn); color: var(--warn); }
+.star:disabled { opacity: .5; cursor: default; }
+/* The page's own header: title, search, and the one action that starts something. */
+.repos-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.repos-head h1 { margin: 0; margin-right: auto; }
+.repo-search { flex: 1 1 240px; max-width: 380px; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font: 13px inherit; }
+.repo-search:focus-visible { outline: none; border-color: var(--accent); }
+.btn { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font-size: 13px; text-decoration: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 .lock { font-size: 11px; color: var(--text-tertiary); font-family: var(--mono); border: 1px solid var(--border-strong); border-radius: 10px; padding: 0 6px; margin-left: var(--s2); }
 .empty { padding: var(--s5); color: var(--text-secondary); text-align: center; border: 1px dashed var(--border-strong); border-radius: 8px; }
 
