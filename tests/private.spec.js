@@ -5,7 +5,7 @@
  * to the authority itself. A revocation turns the key.
  */
 import { expect, test } from "@playwright/test"
-import { ADDR, commit, connected, createRepo, freshRoom, go, inStore, lines, loginAs, persisted, preview, rows, seesLine, setLine, tab, visitor } from "./_helpers.js"
+import { ADDR, commit, connected, createRepo, freshRoom, go, inStore, lines, loginAs, persisted, preview, replaceAll, rows, seesLine, setLine, tab, visitor } from "./_helpers.js"
 
 test("a private repository is sealed for everyone but its members; a grant opens it, a revocation turns the key, and the owner reads it back after a reload", async ({ browser }) => {
   const room = freshRoom("private")
@@ -78,3 +78,28 @@ test("a private repository is sealed for everyone but its members; a grant opens
   expect(first).not.toBe(second)
   await alice.close(); await bob.close(); await authority.close()
 })
+
+test("a private repository's lines stay sealed on every path that rewrites them in place: discard, a whole-buffer paste", async ({ browser }) => {
+  const room = freshRoom("sealed-paths")
+  const alice = await visitor(browser, room)
+  await loginAs(alice, "alice")
+  await createRepo(alice, "sealed", "", { isPrivate: true })
+  const openLines = () => alice.page.evaluate(async () => (await globalThis.db.map({ query: { type: "line" } })).results.filter((n) => typeof n.value.text === "string").length)
+  expect(await openLines()).toBe(0)
+
+  // Discard brings the buffer back to the head: the changed line is rewritten under its id — sealed.
+  await setLine(alice, "Hello from dCode", "  <h1>SECRET</h1>")
+  await expect(alice.page.locator("#dirty")).toBeVisible()
+  await alice.page.locator("#discard").click()
+  await expect(alice.page.locator("#dirty")).toBeHidden()
+  await seesLine(alice, "Hello from dCode")
+  expect(await openLines()).toBe(0)
+
+  // A paste over the whole buffer keeps the first node and rewrites it — sealed too — and mints the rest sealed.
+  await replaceAll(alice, "<!DOCTYPE html>\n<h1>SECRET TWO</h1>\n<p>and three</p>")
+  await seesLine(alice, "SECRET TWO")
+  await expect(lines(alice.page)).toHaveCount(3)
+  expect(await openLines()).toBe(0)
+  await alice.close()
+})
+

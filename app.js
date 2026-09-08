@@ -38,7 +38,7 @@ const boot = async (step, fn) => {
   try { return await fn() }
   catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
 }
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908d")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
+const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260908e")) // the query defeats the browser's week-long cache of the CDN file: every visitor runs the engine the CDN resolves today, not one from a week ago — peers on two engine versions refuse each other's writes
 
 // `?room=` opens a private sandbox of the same site (the tests use it, so can
 // you); `?relay=` points signalling at a relay of your own.
@@ -301,12 +301,13 @@ const forkAndCommit = async (from, message, content) => {
  */
 const applyText = async (branchId, text) => {
   const repo = nodes.get(branchId)?.value.repo
-  const cur = linesOf(branchId), A = cur.map((n) => n.value.text), B = text.split("\n")
+  const cur = linesOf(branchId).map((n) => { const ta = fieldOf($(n.id)); return ta ? { ...n, value: { ...n.value, text: ta.value } } : n }) // a mounted line reads as the buffer shows it: a save flushed a moment ago has not reached the store yet
+  const A = cur.map((n) => n.value.text), B = text.split("\n")
   const ops = []
   let i = 0, j = 0
   for (const [pi, pj] of [...lcs(A, B), [A.length, B.length]]) {
     const gone = cur.slice(i, pi), fresh = B.slice(j, pj), reuse = Math.min(gone.length, fresh.length)
-    for (let k = 0; k < reuse; k++) if (gone[k].value.text !== fresh[k]) ops.push(db.put({ ...gone[k].value, text: fresh[k] }, gone[k].id))
+    for (let k = 0; k < reuse; k++) if (gone[k].value.text !== fresh[k]) ops.push(putLine(repo, branchId, fresh[k], gone[k].value.order, gone[k].id)) // through putLine: a private repository's line is sealed, never spread from the store, where its text is already open
     for (let k = reuse; k < gone.length; k++) ops.push(db.remove(gone[k].id))
     if (fresh.length > reuse) {
       const lo = (reuse ? gone[reuse - 1] : cur[i - 1])?.value.order, hi = cur[pi]?.value.order
