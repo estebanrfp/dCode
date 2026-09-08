@@ -71,23 +71,45 @@ export function mountAgent(api) {
     prompt ??= await loadPrompt()
     engine ??= globalThis.__agentEngine ?? await loadEngine() // the suite plugs a stub in: the flow is what it pins, the model is a part
     desk.model ??= "stub"
-    // A branch of its own — owned by the agent, in the owner's repository — from where the owner stood.
+    // A branch of its own — owned by the agent, in the owner's repository — from
+    // where the owner stood, holding the owner's file: what the model dictates is
+    // FITTED onto it as it arrives. A line the file already holds keeps its node,
+    // a changed one is rewritten in place, only what is new is inserted and only
+    // what is gone is removed — the room watches the file change, not start over.
     const name = slug(brief), room = name
     const branch = await api.create({ type: "branch", repo, name, head: from.value.head })
-    tell(`${desk.model} is writing on ${name}…`, { repo, branch })
     const current = api.contentOf(from.value.head)
-    const user = current.trim() && current.length < 6000 ? `${brief}\n\nThe repository currently holds this file; build on it where that makes sense:\n\n${current}` : brief
-    // Each completed line is a node the moment it exists: the room watches the file appear.
-    // The platform's skeleton is enforced on the way in, whatever the model did with the
-    // rules: the script is a module, GenosDB is imported from its CDN, the room is this app's.
-    const lines = []; let tail = "", n = 0, imported = false
-    const land = async (line) => {
+    const existing = (await api.seedLines(repo, branch, current)).map((id, i) => ({ id, text: current.split("\n")[i], order: i + 1 }))
+    tell(`${desk.model} is writing on ${name}…`, { repo, branch })
+    const user = current.trim() && current.length < 6000
+      ? `${brief}\n\nModify the file below to do that. Keep every line you do not need to change exactly as it is, in its place, and output the whole file:\n\n${current}`
+      : brief
+    const lines = []; let tail = "", held = null, imported = false, i = 0, prevOrder = undefined, fresh = []
+    const trivial = (t) => t.trim().length <= 3 // a blank line or a lone closing tag anchors only with the line after it
+    const place = async (upto) => { // what came since the last anchor stands where existing[i..upto) stood
+      const gone = existing.slice(i, upto), reuse = Math.min(gone.length, fresh.length)
+      for (let t = 0; t < reuse; t++) if (gone[t].text !== fresh[t]) await api.putLine(repo, branch, fresh[t], gone[t].order, gone[t].id)
+      for (let t = reuse; t < gone.length; t++) await api.remove(gone[t].id)
+      if (fresh.length > reuse) {
+        const keys = api.keysBetween(reuse ? gone[reuse - 1].order : prevOrder, existing[upto]?.order, fresh.length - reuse)
+        for (let t = reuse; t < fresh.length; t++) await api.putLine(repo, branch, fresh[t], keys[t - reuse])
+        prevOrder = keys.at(-1)
+      } else if (reuse) prevOrder = gone[reuse - 1].order
+      fresh = []
+    }
+    const decide = async (line, next) => { // one line of lookahead: a trivial line is an anchor only with its follower
+      const j = existing.findIndex((e, idx) => idx >= i && idx < i + 40 && e.text === line && (!trivial(line) || (next === null ? idx === existing.length - 1 : existing[idx + 1]?.text === next)))
+      lines.push(line)
+      if (j < 0) return fresh.push(line)
+      await place(j); prevOrder = existing[j].order; i = j + 1
+    }
+    const feed = async (line) => { if (held !== null) await decide(held, line); held = line }
+    const land = async (line) => { // the platform's skeleton is enforced on the way in, whatever the model did with the rules
       if (/^```/.test(line)) return
       if (/<script(?![^>]*type=)/.test(line)) line = line.replace("<script", '<script type="module"')
       if (line.includes(IMPORT)) imported = true
-      if (/\bgdb\(/.test(line) && !imported) { const pad = line.match(/^\s*/)[0]; lines.push(pad + IMPORT); await api.putLine(repo, branch, pad + IMPORT, ++n); imported = true }
-      line = line.replace(/gdb\(\s*["'](my-app-name|room-name|app|my-app|shared-todos)["']/, `gdb("${room}"`)
-      lines.push(line); return api.putLine(repo, branch, line, ++n)
+      if (/\bgdb\(/.test(line) && !imported) { await feed(line.match(/^\s*/)[0] + IMPORT); imported = true }
+      await feed(line.replace(/gdb\(\s*["'](my-app-name|room-name|app|my-app|shared-todos)["']/, `gdb("${room}"`))
     }
     const chunks = await engine.chat.completions.create({ messages: [{ role: "system", content: prompt }, { role: "user", content: user }], stream: true, temperature: 0.2, max_tokens: 6000 })
     for await (const chunk of chunks) {
@@ -96,6 +118,8 @@ export function mountAgent(api) {
       while ((cut = tail.indexOf("\n")) >= 0) { await land(tail.slice(0, cut)); tail = tail.slice(cut + 1) }
     }
     if (tail.trim()) await land(tail)
+    if (held !== null) await decide(held, null)
+    await place(existing.length) // whatever the file still held past the last anchor is gone
     const content = lines.join("\n")
     const id = await api.newCommit({ repo, branch, parents: from.value.head ? [from.value.head] : [], message: brief.slice(0, 120), content })
     await api.patch(branch, { head: id })

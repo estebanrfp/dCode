@@ -1252,4 +1252,4 @@ presence()
 render()
 
 // ── The agent: a model in this browser, committing like anyone else ─────────
-mountAgent({ currentBranch, me: () => me, node: (id) => nodes.get(id), create, patch, newCommit, putLine, contentOf, short, notice, presence: presenceChannel, room: db.room, sm: db.sm, paintDesk, name: (addr, label) => { NAMES.set(addr.toLowerCase(), label); renderSession(); scheduleRender() } })
+mountAgent({ currentBranch, me: () => me, node: (id) => nodes.get(id), create, patch, newCommit, putLine, seedLines, keysBetween, remove: (id) => db.remove(id), contentOf, short, notice, presence: presenceChannel, room: db.room, sm: db.sm, paintDesk, name: (addr, label) => { NAMES.set(addr.toLowerCase(), label); renderSession(); scheduleRender() } })

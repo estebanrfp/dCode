@@ -19,8 +19,13 @@ const APP = `<!DOCTYPE html>
   </script>
 </body>
 </html>`
-const stub = (text) => `globalThis.__agentEngine = { chat: { completions: { create: async () => (async function* () {
-  for (const piece of ${JSON.stringify(text.match(/[\s\S]{1,17}/g))}) yield { choices: [{ delta: { content: piece } }] }
+const AGAIN = APP.replace("<h1>Agent Todo</h1>", "<h1>Agent Todo, again</h1>\n  <p>One line changed, one added.</p>")
+/** The model as a part: each brief takes the next script, streamed in small pieces. */
+const stub = (...texts) => `globalThis.__agentScript = ${JSON.stringify(texts)}
+globalThis.__agentEngine = { chat: { completions: { create: async () => (async function* () {
+  const text = globalThis.__agentScript.shift()
+  if (!globalThis.__agentScript.length) await new Promise((release) => { globalThis.__agentRelease = release }) // the last script waits for the test's go
+  for (const piece of text.match(/[\\s\\S]{1,17}/g)) yield { choices: [{ delta: { content: piece } }] }
 })() } } }`
 
 test("the agent signs as itself in a window of its own, writes a branch it owns, proposes it; the owner merges and the app runs", async ({ browser }) => {
@@ -30,7 +35,7 @@ test("the agent signs as itself in a window of its own, writes a branch it owns,
   await connected(alice); await connected(bob)
   const { repo } = await createRepo(alice, "agent-lab", "Where the agent works")
   const mainHead = await head(alice.page).textContent()
-  await alice.context.addInitScript(stub("```html\n" + APP + "\n```")) // the desk is a new document in Alice's context: the stub lands there
+  await alice.context.addInitScript(stub("```html\n" + APP + "\n```", AGAIN)) // the desk is a new document in Alice's context: the stub lands there
 
   await expect(alice.page.locator("#agent")).toBeVisible()
   const deskOpens = alice.context.waitForEvent("page") // the desk opens with noopener: a new page of the context, not a popup of the page
@@ -64,6 +69,24 @@ test("the agent signs as itself in a window of its own, writes a branch it owns,
   await expect(alice.page.locator("#notice")).toContainText("Fast-forwarded main")
   await expect(head(alice.page)).not.toHaveText(mainHead)
   await expect(preview(alice.page)).toContainText("Agent Todo")
+
+  // A second brief, on main as it now stands: the agent's branch starts as the file and what the
+  // model dictates is fitted onto it — the lines that did not change keep their nodes.
+  const ids = (p) => p.locator("#buffer .line").evaluateAll((els) => els.map((el) => [el.id, el.querySelector("textarea").value]))
+  await alice.page.locator("#agent-brief").fill("Change the heading and add a line")
+  await alice.page.locator("#agent-go").click()
+  await expect(alice.page.locator("#branch-select option:checked")).toHaveText(/agent\/change-the-heading-and-add-a-line/)
+  await expect(alice.page.locator("#buffer .line")).toHaveCount(APP.split("\n").length) // seeded with main's file, the model held at the gate
+  const seeded = await ids(alice.page)
+  expect(seeded.map(([, t]) => t).join("\n")).toBe(APP)
+  await desk.evaluate(() => globalThis.__agentRelease()) // now the model may speak
+  await expect(alice.page.locator("#notice")).toContainText("opened a pull request")
+  await seesLine(alice, "One line changed, one added")
+  const after = await ids(alice.page)
+  expect(after.map(([, t]) => t).join("\n")).toBe(AGAIN)
+  const kept = after.filter(([id]) => seeded.some(([sid]) => sid === id))
+  expect(kept.length).toBe(APP.split("\n").length) // every seeded node is still there — the changed heading rewritten in place
+  expect(after.length - kept.length).toBe(1) // one line inserted, under a new node
   await assertTransport(bob)
   await desk.close(); await alice.close(); await bob.close()
 })
