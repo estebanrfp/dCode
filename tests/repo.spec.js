@@ -78,9 +78,18 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(preview(bob.page)).toContainText("Hello from dCode")
   await expect(preview(bob.page)).not.toContainText("Hello, Bob")
   await expect(bob.page.locator("#dirty")).toBeHidden() // reading a version wrote nothing
+  await expect(bob.page.locator("#buffer")).toHaveAttribute("data-readonly", "1") // and the editor shows it, in read-only
+  await expect(bob.page.locator(".line textarea").first()).toHaveJSProperty("readOnly", true)
+  await expect(bob.page.locator("#commit-btn")).toBeDisabled()
+
   const [old] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download-commit"]').click()])
   expect(old.suggestedFilename()).toMatch(/^hello-world-[0-9a-f]{7}\.html$/)
   expect(readFileSync(await old.path(), "utf8")).toContain("Hello from dCode")
+
+  // Letting go of the version brings the branch's buffer back, as it was left.
+  await bob.page.locator("#commit-hint a").click()
+  await expect(bob.page.locator("#buffer")).not.toHaveAttribute("data-readonly", "1")
+  await seesLine(bob, "Hello, Bob, from dCode")
 
   await assertTransport(bob)
   await alice.close(); await bob.close()

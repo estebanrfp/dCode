@@ -394,6 +394,7 @@ const paint = (ta, text) => {
   highlight(ta.closest(".line"))
 }
 /** The buffer as you see it: what a commit takes, what the dirty flag compares. */
+const readOnlyView = () => !!buffer()?.dataset.readonly // a commit is on screen: these lines are not nodes, so nothing may write
 const domText = () => [...buffer().children].map((li) => fieldOf(li).value).join("\n")
 
 // One debounced save per line, so typing costs one put per pause. A commit
@@ -487,6 +488,7 @@ function createLine(id, { repo, branch, text, order }) {
     afterChange()
   })
   ta.addEventListener("keydown", async (e) => {
+    if (readOnlyView()) return
     if (allSelected) return // buffer-selection mode: the document handles keys
     if (e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); extendRange(li, e.key === "ArrowUp" ? -1 : 1); return }
     if (range) { // whole lines selected: Backspace and Delete take them, Escape lets go, the clipboard shortcuts reach the document, anything else is the caret again
@@ -515,6 +517,7 @@ function createLine(id, { repo, branch, text, order }) {
   // its own node. The first line joins the text left of the caret, the last
   // the text right of it, and the caret lands at the end of what was pasted.
   ta.addEventListener("paste", async (e) => {
+    if (readOnlyView()) return
     if (range) return // whole lines selected: the document replaces them
     const pasted = e.clipboardData?.getData("text/plain") ?? ""
     if (!pasted.includes("\n")) return
@@ -634,7 +637,22 @@ const HL = {
 const highlight = (li) => { const pre = li?.querySelector(".hl"); if (pre) pre.innerHTML = HL[li.dataset.lang ?? "html"](fieldOf(li).value) }
 
 /** The editor shows this branch's lines; the store keeps feeding it while it is mounted. */
+/**
+ * A commit, shown in the editor as a branch is shown: one line per line, the
+ * same HTML/CSS/JS views, the same colouring — and nothing editable, because
+ * these lines are not nodes. Selecting another commit, or the branch itself,
+ * replaces it; the shared buffer is untouched throughout.
+ */
+function mountVersion(repo, text) {
+  current = null // no branch is mounted: nothing here saves, and the autorun has nothing to follow
+  buffer().replaceChildren()
+  buffer().dataset.readonly = "1"
+  text.split("\n").forEach((line, i) => createLine(`v${i}`, { repo, branch: "", text: line, order: i + 1 }))
+  for (const ta of buffer().querySelectorAll("textarea")) { ta.readOnly = true; ta.tabIndex = -1 }
+  relayout()
+}
 function mountBuffer(repo, branch) {
+  delete buffer().dataset.readonly
   current = { repo, branch }
   buffer().replaceChildren()
   for (const n of linesOf(branch)) if (n.value.text !== undefined) createLine(n.id, n.value) // a sealed line waits for its key
@@ -729,16 +747,18 @@ let allSelected = false
 const setAllSelected = (on) => { allSelected = on; if (on) setRange(null); buffer()?.classList.toggle("all-selected", on) }
 document.addEventListener("copy", (e) => { const text = allSelected ? domText() : range ? rangeText() : null; if (text === null) return; e.preventDefault(); e.clipboardData.setData("text/plain", text) })
 document.addEventListener("cut", (e) => {
+  if (readOnlyView()) return
   if (allSelected) { e.preventDefault(); e.clipboardData.setData("text/plain", domText()); setAllSelected(false); applyText(current.branch, ""); return }
   if (range) { e.preventDefault(); e.clipboardData.setData("text/plain", rangeText()); deleteRange() }
 })
 document.addEventListener("paste", (e) => {
+  if (readOnlyView()) return
   const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r/g, "")
   if (allSelected) { e.preventDefault(); setAllSelected(false); applyText(current.branch, text); return }
   if (range) { e.preventDefault(); replaceRange(rangeLines(), text) }
 })
 document.addEventListener("keydown", (e) => {
-  if (!allSelected) return
+  if (!allSelected || readOnlyView()) return
   if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); setAllSelected(false); applyText(current.branch, "") }
   else if (e.key === "Escape") setAllSelected(false)
   else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) setAllSelected(false)
@@ -966,16 +986,19 @@ const renderMembers = async (repo) => {
 }
 function renderRepoBar() {
   const branch = currentBranch(); if (!branch || !$("head-label")) return
-  const repo = nodes.get(branch.value.repo), dirty = domText() !== contentOf(branch.value.head), writable = canWriteBranch(branch), merging = pendingMerge.get(branch.id)
+  const viewing = $("main").dataset.viewing // a version is on screen: what the bar says of the buffer does not hold
+  const repo = nodes.get(branch.value.repo), dirty = !viewing && domText() !== contentOf(branch.value.head), writable = canWriteBranch(branch), merging = pendingMerge.get(branch.id)
   $("repo-name").textContent = repo.value.name; $("repo-name").title = repo.value.description
   $("repo-lock").classList.toggle("hidden", !repo.value.vault)
   $("edit-repo").classList.toggle("hidden", !eqAddr(repo.value.owner, me))
   $("head-label").textContent = `@ ${short(branch.value.head)}`
   $("dirty").classList.toggle("hidden", !dirty)
   $("discard").disabled = !dirty
-  $("commit-btn").textContent = !me ? "Sign in to commit" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
-  $("commit-btn").disabled = !me
-  $("commit-hint").textContent = !me || writable ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
+  $("commit-btn").textContent = viewing ? "Reading a version" : !me ? "Sign in to commit" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
+  $("commit-btn").disabled = !me || !!viewing
+  $("commit-hint").innerHTML = viewing
+    ? `${esc(short(viewing))} as it was, read-only. <a href="#/r/${esc(repo.id)}/${esc(branch.id)}">Back to the buffer</a>`
+    : !me || writable ? "" : `Everyone edits this buffer; only ${esc(nameOf(branch.value.owner))} moves ${esc(branchLabel(repo, branch))}. Your commit will go to a branch of yours, forked from here.`
   const banner = $("merge-banner")
   banner.classList.toggle("hidden", !merging)
   if (merging) banner.textContent = `Merging ${short(merging.parents[0])}: resolve the conflict markers (<<<<<<<, =======, >>>>>>>) and commit. The commit will have two parents.`
@@ -1076,7 +1099,11 @@ const renderRepo = (r, main) => {
   const branch = branches.find((b) => b.id === r.branch) ?? defaultBranch(repo, branches)
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
   if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "preview"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
-  if (branch && main.dataset.branch !== branch.id) { main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
+  // The editor follows the timeline: a selected commit is shown read-only, and
+  // letting go of it brings the branch's buffer back.
+  const viewing = r.commit && commitOf(r.commit) ? r.commit : ""
+  if (viewing && main.dataset.viewing !== viewing) { main.dataset.viewing = viewing; main.dataset.branch = ""; mountVersion(repo.id, contentOf(viewing)) }
+  else if (!viewing && branch && (main.dataset.branch !== branch.id || main.dataset.viewing)) { main.dataset.viewing = ""; main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
   // A repository whose branch has not arrived is not an empty file: say so, rather than showing a blank editor that invites typing into nothing.
   if (!branch && !buffer()?.querySelector(".line")) { main.dataset.branch = ""; buffer().innerHTML = `<p class="waiting">This repository is here, its branch is not. Nothing on this device can open it until a peer that holds the branch is online${me ? "" : " — or sign in and start your own"}.</p>` }
   renderBranches(repo, branches, branch, commits, selected)
@@ -1125,7 +1152,7 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", async (e) => {
   const li = e.target.closest("li[data-commit]")
   if (li) { const r = route(); location.hash = at(r.repo, $("main").dataset.branch, li.dataset.commit); return }
-  if (e.target === buffer() && !buffer().children.length && me && current) { await insertAfter(null); return } // an empty buffer: click to start a line (not before its branch is here)
+  if (e.target === buffer() && !buffer().children.length && me && current && !readOnlyView()) { await insertAfter(null); return } // an empty buffer: click to start a line (not before its branch is here)
   if (e.target === buffer() || e.target.classList?.contains("edit-panel")) { // the space under the last line is the editor too: the caret goes to its end
     const last = [...buffer()?.children ?? []].filter(shown).at(-1); if (last) caretTo(last, fieldOf(last).value.length); return
   }

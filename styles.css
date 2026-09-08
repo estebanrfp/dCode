@@ -434,3 +434,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 
 /* A repository whose branch has not reached this device: the editor says why it is blank. */
 .waiting { margin: var(--s4); max-width: 52ch; color: var(--text-tertiary); font-size: 13px; line-height: 1.6; }
+
+/* A version from the timeline, in the editor: the same code, none of it yours to type in. */
+.buffer[data-readonly] textarea { cursor: default; }
+.buffer[data-readonly] .ln { color: var(--text-tertiary); opacity: .7; }
