@@ -10,6 +10,7 @@
 // author's address, and a branch head can only be moved by the branch's owner
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
+import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js"
 import { CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "./constitution.js"
 import { mountAgent } from "./agent.js"
 
@@ -32,14 +33,6 @@ const applyTheme = (pref) => {
 systemTheme.addEventListener("change", () => { if (document.documentElement.dataset.pref === "system") applyTheme("system") }) // on `system` the OS can change under us
 applyTheme(localStorage.theme ?? "system")
 
-// The shell shows before a byte of the engine arrives; what follows can be
-// slow (a CDN, the relays) or fail, and either must be visible.
-const boot = async (step, fn) => {
-  try { return await fn() }
-  catch (err) { $("main").innerHTML = `<p class="loading">Could not ${esc(step)}: ${esc(err.message)}</p><p class="muted">Reload to try again. dCode needs cdn.jsdelivr.net for the engine and a relay to meet peers.</p>`; throw err }
-}
-const { gdb } = await boot("load the GenosDB engine from cdn.jsdelivr.net", () => import("https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js")) // the link GenosDB's own README and API reference give
-
 // The URL says where you are and nothing else: no feature ever writes to it.
 // `?room=` opens a private sandbox of the same site — what the suite gives each
 // run so it starts empty; `?relay=` points signalling at a relay of your own.
@@ -49,11 +42,12 @@ const RELAY = params.get("relay")
 const PASSKEYS_AVAILABLE = window.isSecureContext && !!window.PublicKeyCredential && !/^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname)
 
 // ── Boot: the constitution travels beside the root of trust ─────────────────
-const db = await boot("open the graph on this device", () => gdb(ROOM, {
+// The database first, and nothing wired before it (design guide §5.1).
+const db = await gdb(ROOM, {
   rtc: RELAY ? { relayUrls: [RELAY] } : true, debug: params.has("debug"), // `?debug`: the engine's own log — refusals, sync, persistence — the only way to see why something did not arrive
   sm: { superAdmins: [AUTHORITY], customRoles: CONSTITUTION.roles, ...(governanceRules.length && { governanceRules }), acls: true },
-}))
-globalThis.db = db // console handle, as in the official examples
+})
+globalThis.db = db // what the suite writes through to act as a tampered client and to read the graph back; the preview runs sandboxed on an opaque origin, so nothing it hosts reaches this
 
 // ── The store: one subscription, every kind of node ─────────────────────────
 const nodes = new Map() // id → { id, value, timestamp }
