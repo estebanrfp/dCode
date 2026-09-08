@@ -206,7 +206,7 @@ const ago = (at) => {
   const [n, u] = s < 3600 ? [Math.floor(s / 60), "minute"] : s < 86400 ? [Math.floor(s / 3600), "hour"] : [Math.floor(s / 86400), "day"]
   return `${n} ${u}${n === 1 ? "" : "s"} ago`
 }
-const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`
+const plural = (n, w, many) => `${n} ${n === 1 ? w : many ?? `${w}s`}`
 const say = (id, text) => { const el = $(id); if (el) el.textContent = text }
 const TOAST_ICONS = { info: "ⓘ", success: "✓", error: "✕" }
 /** Events belong here; what is TRUE stays on the page — the repository bar, the timeline, the buffer. */
@@ -828,29 +828,43 @@ setInterval(() => { // after the caret leaves the buffer, "left" is repeated twi
 }, 2000)
 
 // ── Views ───────────────────────────────────────────────────────────────────
-let repoQuery = "" // the search box types into this; only the list under it is redrawn, so the box keeps the caret
-/** The list alone, so a keystroke in the search box costs a list and not a page. */
+let repoQuery = "", repoWho = "all", repoSort = "recent" // the filters live here; only the results are redrawn when they change
+const SORTS = { recent: "Recently active", stars: "Most starred", name: "Name" }
+const WHO = { all: "All", mine: "Mine", starred: "Starred by me" }
+/** The results alone, so a keystroke or a filter costs a list and not a page. */
 const repoList = () => {
   const q = repoQuery.trim().toLowerCase()
-  const match = (r) => !q || [r.value.name, r.value.description, nameOf(r.value.owner)].some((t) => (t ?? "").toLowerCase().includes(q))
-  const shown = repos().filter(match).map((r) => {
+  const at = (r) => commitsOf(r.id)[0]?.value.at ?? 0
+  const shown = repos()
+    .filter((r) => !q || [r.value.name, r.value.description, nameOf(r.value.owner)].some((t) => (t ?? "").toLowerCase().includes(q)))
+    .filter((r) => repoWho === "all" || (repoWho === "mine" ? eqAddr(r.value.owner, me) : !!myStar(r.id)))
+    .sort((a, b) => (repoSort === "stars" ? starsOf(b.id).length - starsOf(a.id).length : repoSort === "name" ? a.value.name.localeCompare(b.value.name) : at(b) - at(a)))
+  const rows = shown.map((r) => {
     const branches = branchesOf(r.id), stars = starsOf(r.id).length, forks = forksOf(r, branches), last = commitsOf(r.id)[0]
     return `<li>
 <div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
 <button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me ? "" : "disabled"}>★ ${stars}</button></div>
 <p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
-<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch")}</span><span title="People with a branch of their own here">${plural(forks, "fork")}</span><span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
+<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
   })
-  return shown.length ? `<ul class="repos">${shown.join("")}</ul>` : `<div class="empty">${q ? `Nothing matches “${esc(repoQuery)}”.` : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`
+  return `<p class="results-count">${plural(shown.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
+${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches." : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`}`
 }
-const reposPage = () => {
-  const mine = repos().filter((r) => eqAddr(r.value.owner, me))
-  return `<div class="page repos-page">
-<header class="repos-head"><h1>Repositories</h1><input type="search" id="repo-search" class="repo-search" placeholder="Search name, description or author" aria-label="Search repositories" value="${esc(repoQuery)}">${me ? `<a class="btn primary" href="#/new">New repository</a>` : `<a class="btn" href="#/login">Sign in</a>`}</header>
-<p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone.</p>
-<div id="repo-list">${repoList()}</div>
-${mine.length ? `<p class="testing">Testing: <button type="button" class="small ghost" data-act="delete-mine" title="Remove the repositories you own — the lines, the branches, the commits and pull requests you signed — as writes every peer accepts">Delete my repositories</button></p>` : ""}</div>`
-}
+const reposPage = () => `<div class="page repos-page">
+<aside class="filters">
+  <input type="search" id="repo-search" class="repo-search" placeholder="Search repositories" aria-label="Search repositories" value="${esc(repoQuery)}">
+  <h2>Owner</h2>
+  <div class="filter-group" data-filter="who">${Object.entries(WHO).map(([k, label]) => `<button class="chip-btn${repoWho === k ? " on" : ""}" data-who="${k}"${k !== "all" && !me ? " disabled" : ""}>${label}</button>`).join("")}</div>
+  <h2>Sort</h2>
+  <div class="filter-group" data-filter="sort">${Object.entries(SORTS).map(([k, label]) => `<button class="chip-btn${repoSort === k ? " on" : ""}" data-sort="${k}">${label}</button>`).join("")}</div>
+  ${me ? `<a class="btn primary new-repo" href="#/new">New repository</a>` : `<a class="btn new-repo" href="#/login">Sign in to create one</a>`}
+  ${repos().some((r) => eqAddr(r.value.owner, me)) ? `<p class="testing">Testing: <button type="button" class="small ghost" data-act="delete-mine" title="Remove the repositories you own — the lines, the branches, the commits and pull requests you signed — as writes every peer accepts">Delete my repositories</button></p>` : ""}
+</aside>
+<section class="results">
+  <h1>Repositories</h1>
+  <p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone.</p>
+  <div id="repo-list">${repoList()}</div>
+</section></div>`
 const newPage = () => (me
   ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
 <form id="new-form" class="formtable"><label for="nf-name">name</label><input id="nf-name" type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" placeholder="my-project">
@@ -1352,6 +1366,12 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "autorun" && e.target.checked) afterChange()
 })
 document.addEventListener("input", (e) => { if (e.target.id === "repo-search" && $("repo-list")) { repoQuery = e.target.value; $("repo-list").innerHTML = repoList() } })
+document.addEventListener("click", (e) => { // a filter marks itself and redraws the results, never the page: the search box keeps its caret
+  const btn = e.target.closest("[data-who], [data-sort]"); if (!btn || !$("repo-list")) return
+  if (btn.dataset.who) repoWho = btn.dataset.who; else repoSort = btn.dataset.sort
+  for (const other of btn.parentElement.children) other.classList.toggle("on", other === btn)
+  $("repo-list").innerHTML = repoList()
+})
 document.addEventListener("focusout", () => { if (dirtyWhileTyping) { dirtyWhileTyping = false; scheduleRender() } })
 addEventListener("hashchange", () => { if (!document.activeElement?.closest(".line")) document.activeElement?.blur(); render() })
 

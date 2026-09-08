@@ -211,7 +211,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 /* Repositories */
 .page { width: 100%; max-width: 880px; margin: 0 auto; }
 .page .lede { color: var(--text-secondary); max-width: 72ch; }
-.repos { list-style: none; margin: var(--s4) 0 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-secondary); }
+.repos { list-style: none; margin: var(--s2) 0 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-secondary); }
 .repos li { display: block; padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border-subtle); }
 .repos li:last-child { border-bottom: none; }
 .repos li:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
@@ -226,12 +226,23 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .star:hover:not(:disabled) { border-color: var(--warn); color: var(--warn); }
 .star.on { border-color: var(--warn); color: var(--warn); }
 .star:disabled { opacity: .5; cursor: default; }
-/* The page's own header: title, search, and the one action that starts something. */
-.repos-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-.repos-head h1 { margin: 0; margin-right: auto; }
-.repo-search { flex: 1 1 240px; max-width: 380px; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font: 13px inherit; }
+/* The index is a panel like the repository view: what narrows the list on the
+   left, what the list says on the right. */
+.repos-page { display: grid; grid-template-columns: 240px 1fr; gap: var(--s6); align-items: start; }
+.repos-page .filters { display: flex; flex-direction: column; gap: var(--s2); position: sticky; top: var(--s4); }
+.repos-page .filters h2 { margin: var(--s3) 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); }
+.repos-page .results h1 { margin: 0; }
+.filter-group { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.chip-btn { padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: none; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.chip-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.chip-btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text-primary); }
+.chip-btn:disabled { opacity: .45; cursor: default; }
+.new-repo { margin-top: var(--s3); text-align: center; text-decoration: none; }
+.results-count { margin: var(--s4) 0 0; color: var(--text-tertiary); font-size: 12px; }
+@media (max-width: 720px) { .repos-page { grid-template-columns: 1fr; } .repos-page .filters { position: static; } }
+.repo-search { flex: none; width: 100%; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font: 13px inherit; }
 .repo-search:focus-visible { outline: none; border-color: var(--accent); }
-.btn { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font-size: 13px; text-decoration: none; }
+.btn { display: block; padding: 6px 12px; text-decoration: none; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font-size: 13px; text-decoration: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 .lock { font-size: 11px; color: var(--text-tertiary); font-family: var(--mono); border: 1px solid var(--border-strong); border-radius: 10px; padding: 0 6px; margin-left: var(--s2); }
 .empty { padding: var(--s5); color: var(--text-secondary); text-align: center; border: 1px dashed var(--border-strong); border-radius: 8px; }
