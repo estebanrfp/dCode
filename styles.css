@@ -393,9 +393,3 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .agent-go { flex: none; width: 32px; height: 32px; border: none; border-radius: 6px; background: var(--accent); color: var(--text-on-accent); font-size: 12px; cursor: pointer; }
 .agent-go:hover { background: var(--accent-hover); }
 .agent-status { position: absolute; left: var(--s3); bottom: calc(100% + var(--s1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.4 var(--mono); color: var(--text-secondary); }
-
-/* The agent's desk: what this window knows about itself, and its log. */
-.desk-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); margin: var(--s4) 0; font-size: 13px; }
-.desk-facts dt { color: var(--text-tertiary); }
-.desk-facts dd { margin: 0; font-family: var(--mono); color: var(--text-primary); }
-.desk-log { margin: 0; padding: var(--s3); min-height: 8em; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; font: 12px/1.6 var(--mono); color: var(--text-secondary); white-space: pre-wrap; }

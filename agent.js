@@ -1,47 +1,33 @@
-// The agent: a coding model that runs in a window of its own, on WebGPU, with
-// an identity of its own — one more peer in the room. It takes briefs from
-// the prompt box of the other windows, writes the file line by line into the
-// shared buffer of a branch it owns, commits under its own signature and
-// opens a pull request the owner merges. No server, no key, no request leaves
-// the machine: the weights are downloaded once from the model hub and cached
-// by the browser. Its mnemonic is minted on this device the first time and
-// kept here; it is the identity of "the agent on this computer", nothing more.
-//
-// Two mounts, one file. On `#/agent` this window is the DESK: it signs in as
-// the agent and works. Anywhere else this window shows the BOX: it opens the
-// desk when there is none and hands it the brief over the room's ephemeral
-// channel, as two kinds of message beside the carets: `agent-brief` from a
-// box to the desk, `agent-status` from the desk to every box.
+// The agent: a coding model that runs in this window, on WebGPU, and edits
+// the shared buffer the way you do — as you. Describe a change and the file
+// changes in place, line by line, under your session: a line the buffer
+// already holds keeps its node, a changed one is rewritten under the same
+// id, only what is new is inserted and only what is gone is removed. Then
+// the flow is the one you know: the commit message is prefilled with the
+// brief, and you commit to your branch, or fork and commit on someone else's
+// and propose it. No server, no key, no request leaves the machine: the
+// weights are downloaded once from the model hub and cached by the browser.
 const WEBLLM = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm"
 const MODELS = ["Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC", "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC", "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC"]
 const DOCS = "https://cdn.jsdelivr.net/gh/estebanrfp/gdb@main/llms.txt" // GenosDB's own summary for models, fetched fresh so the agent follows the engine
-const MNEMONIC = "dcodeAgentMnemonic"
 const IMPORT = 'import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.js"'
 /** `?model=<id>` puts a model first: a smaller one for a small GPU, a larger one for a large one. */
 const models = () => { const m = new URLSearchParams(location.search).get("model"); return m ? [m, ...MODELS.filter((x) => x !== m)] : MODELS }
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "app"
 
-/** What the desk page shows; the page is rendered from it. */
-export const desk = { state: "off", address: null, model: null, log: [] }
-
 /**
- * Mount the box or the desk, by route. `api` is the application's own
- * vocabulary: the functions the buttons use, handed over so the agent
- * commits like a person — as itself.
+ * Mount the prompt box. `api` is the application's own vocabulary: the
+ * functions the editor uses, handed over so the agent edits like a person.
  * @param {object} api
  */
 export function mountAgent(api) {
-  const isDesk = () => location.hash.startsWith("#/agent")
   const form = document.getElementById("agent"), input = document.getElementById("agent-brief"), status = document.getElementById("agent-status")
-  const boxSay = (text) => { status.textContent = text; status.hidden = !text }
+  if (!form) return
+  const say = (text) => { status.textContent = text; status.hidden = !text }
+  const show = () => { form.hidden = !location.hash.startsWith("#/r/") }
+  addEventListener("hashchange", show); show()
 
-  // ── The desk ──────────────────────────────────────────────────────────
-  let engine = null, prompt = null, busy = false
-  const queue = []
-  const tell = (text, extra = {}) => { // the log here, the status everywhere
-    desk.log.unshift(text); desk.log.length = Math.min(desk.log.length, 12); api.paintDesk()
-    api.presence.send({ kind: "agent-status", address: desk.address, text, ...extra })
-  }
+  let engine = null, model = null, prompt = null
   const loadPrompt = async () => {
     const [rules, docs] = await Promise.all([fetch("agent-prompt.md").then((r) => r.text()), fetch(DOCS).then((r) => (r.ok ? r.text() : "")).catch(() => "")])
     return docs ? `${rules}\n\n## GenosDB, in its own words\n\n${docs}` : rules
@@ -51,131 +37,74 @@ export function mountAgent(api) {
     const { CreateMLCEngine } = await import(WEBLLM)
     for (const id of models()) {
       try {
-        tell(`Loading ${id.split("-Instruct")[0]}…`)
-        const e = await CreateMLCEngine(id, { initProgressCallback: ({ text }) => tell(text.replace(/\[.*?\]\s*/g, "").slice(0, 90)) }, { context_window_size: 8192 })
-        desk.model = id.split("-Instruct")[0]; return e
+        say(`Loading ${id.split("-Instruct")[0]}…`)
+        const e = await CreateMLCEngine(id, { initProgressCallback: ({ text }) => say(text.replace(/\[.*?\]\s*/g, "").slice(0, 90)) }, { context_window_size: 8192 })
+        model = id.split("-Instruct")[0]; return e
       } catch (err) { console.warn(`${id}: ${err.message}`) } // too large for this GPU: the next one down
     }
     throw new Error("No model fits this GPU.")
   }
-  const signIn = async () => {
-    // Minted once on this device, then reused: the same agent every time this computer opens a desk.
-    let phrase = localStorage.getItem(MNEMONIC)
-    if (!phrase) { phrase = (await api.sm.startNewUserRegistration())?.mnemonic; if (!phrase) throw new Error("Could not mint the agent's identity."); localStorage.setItem(MNEMONIC, phrase) } // volatile until signed in with
-    await api.sm.loginOrRecoverUserWithMnemonic(phrase)
-    for (let i = 0; i < 100 && !api.me(); i++) await new Promise((r) => setTimeout(r, 50)) // the session callback lands a moment later
-    if (!api.me()) throw new Error("The agent could not sign in.")
-  }
-  const run = async ({ repo, into, brief }) => {
-    const from = api.node(into); if (!from) throw new Error("The branch to propose into is gone.")
-    prompt ??= await loadPrompt()
-    engine ??= globalThis.__agentEngine ?? await loadEngine() // the suite plugs a stub in: the flow is what it pins, the model is a part
-    desk.model ??= "stub"
-    // A branch of its own — owned by the agent, in the owner's repository — from
-    // where the owner stood, holding the owner's file: what the model dictates is
-    // FITTED onto it as it arrives. A line the file already holds keeps its node,
-    // a changed one is rewritten in place, only what is new is inserted and only
-    // what is gone is removed — the room watches the file change, not start over.
-    const name = slug(brief), room = name
-    const branch = await api.create({ type: "branch", repo, name, head: from.value.head })
-    const current = api.contentOf(from.value.head)
-    const existing = (await api.seedLines(repo, branch, current)).map((id, i) => ({ id, text: current.split("\n")[i], order: i + 1 }))
-    tell(`${desk.model} is writing on ${name}…`, { repo, branch })
-    const user = current.trim() && current.length < 6000
-      ? `${brief}\n\nModify the file below to do that. Keep every line you do not need to change exactly as it is, in its place, and output the whole file:\n\n${current}`
-      : brief
-    const lines = []; let tail = "", held = null, imported = false, i = 0, prevOrder = undefined, fresh = []
-    const trivial = (t) => t.trim().length <= 3 // a blank line or a lone closing tag anchors only with the line after it
-    const place = async (upto) => { // what came since the last anchor stands where existing[i..upto) stood
-      const gone = existing.slice(i, upto), reuse = Math.min(gone.length, fresh.length)
-      for (let t = 0; t < reuse; t++) if (gone[t].text !== fresh[t]) await api.putLine(repo, branch, fresh[t], gone[t].order, gone[t].id)
-      for (let t = reuse; t < gone.length; t++) await api.remove(gone[t].id)
-      if (fresh.length > reuse) {
-        const keys = api.keysBetween(reuse ? gone[reuse - 1].order : prevOrder, existing[upto]?.order, fresh.length - reuse)
-        for (let t = reuse; t < fresh.length; t++) await api.putLine(repo, branch, fresh[t], keys[t - reuse])
-        prevOrder = keys.at(-1)
-      } else if (reuse) prevOrder = gone[reuse - 1].order
-      fresh = []
-    }
-    const decide = async (line, next) => { // one line of lookahead: a trivial line is an anchor only with its follower
-      const j = existing.findIndex((e, idx) => idx >= i && idx < i + 40 && e.text === line && (!trivial(line) || (next === null ? idx === existing.length - 1 : existing[idx + 1]?.text === next)))
-      lines.push(line)
-      if (j < 0) return fresh.push(line)
-      await place(j); prevOrder = existing[j].order; i = j + 1
-    }
-    const feed = async (line) => { if (held !== null) await decide(held, line); held = line }
-    const land = async (line) => { // the platform's skeleton is enforced on the way in, whatever the model did with the rules
-      if (/^```/.test(line)) return
-      if (/<script(?![^>]*type=)/.test(line)) line = line.replace("<script", '<script type="module"')
-      if (line.includes(IMPORT)) imported = true
-      if (/\bgdb\(/.test(line) && !imported) { await feed(line.match(/^\s*/)[0] + IMPORT); imported = true }
-      await feed(line.replace(/gdb\(\s*["'](my-app-name|room-name|app|my-app|shared-todos)["']/, `gdb("${room}"`))
-    }
-    const chunks = await engine.chat.completions.create({ messages: [{ role: "system", content: prompt }, { role: "user", content: user }], stream: true, temperature: 0.2, max_tokens: 6000 })
-    for await (const chunk of chunks) {
-      tail += chunk.choices[0]?.delta?.content ?? ""
-      let cut
-      while ((cut = tail.indexOf("\n")) >= 0) { await land(tail.slice(0, cut)); tail = tail.slice(cut + 1) }
-    }
-    if (tail.trim()) await land(tail)
-    if (held !== null) await decide(held, null)
-    await place(existing.length) // whatever the file still held past the last anchor is gone
-    const content = lines.join("\n")
-    const id = await api.newCommit({ repo, branch, parents: from.value.head ? [from.value.head] : [], message: brief.slice(0, 120), content })
-    await api.patch(branch, { head: id })
-    await api.create({ type: "pr", repo, from: branch, into, title: brief.slice(0, 120), commit: id })
-    tell(`Committed ${api.short(id)} on ${name} and proposed it into ${from.value.name}.`, { repo, branch, done: id })
-  }
-  const drain = async () => {
-    if (busy || !queue.length) return
-    busy = true
-    try { await run(queue.shift()) } catch (err) { tell(`Could not: ${err.message}`) } finally { busy = false; tell("ready"); drain() }
-  }
-  // A window that joins later — the box that asked, most of all — learns the desk is here.
-  api.room.on("peer:join", (peerId) => { if (isDesk() && desk.state === "ready") announce(peerId) })
-  const startDesk = async () => {
-    if (desk.state !== "off") return
-    desk.state = "signing in"; api.paintDesk()
-    try { await signIn(); desk.address = api.me(); api.name(desk.address, "agent"); desk.state = "ready"; tell("ready") }
-    catch (err) { desk.state = "off"; tell(err.message) }
-  }
 
-  // ── The box ───────────────────────────────────────────────────────────
-  // No handle on the desk's window: a window opened with an opener never
-  // finds its peers, so the desk is opened with `noopener` and found by
-  // asking the room. A brief first calls; a desk that is here answers at
-  // once; silence for a moment means there is none, and one is opened.
-  let agentAddress = null, pending = null, pingTimer = null, waitTimer = null
-  const openDesk = () => window.open(`${location.pathname}${location.search}#/agent`, "dcode-agent", "popup,width=560,height=720,noopener")
-  const hand = () => { if (!pending) return; api.presence.send(pending); boxSay("Brief handed to the agent…"); pending = null; clearTimeout(waitTimer) }
-  form?.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault()
     const brief = input.value.trim(); if (!brief) return
-    const from = api.currentBranch(); if (!from) return api.notice("Open a repository first.")
-    if (!api.me()) return api.notice("Sign in first: the agent proposes to you.")
-    pending = { kind: "agent-brief", repo: from.value.repo, into: from.id, brief }
-    input.value = ""
-    boxSay("Calling the agent…"); api.presence.send({ kind: "agent-ping" })
-    clearTimeout(pingTimer); pingTimer = setTimeout(() => { boxSay("Opening the agent's desk…"); openDesk() }, 2500)
-    clearTimeout(waitTimer); waitTimer = setTimeout(() => { if (pending) { pending = null; boxSay(""); api.notice("The agent's desk did not answer. Is its window open?") } }, 120_000)
+    const branch = api.currentBranch(); if (!branch) return api.notice("Open a repository first.")
+    if (!api.me()) return api.notice("Sign in first: the agent edits as you.")
+    input.disabled = true
+    try {
+      prompt ??= await loadPrompt()
+      engine ??= globalThis.__agentEngine ?? await loadEngine() // the suite plugs a stub in: the flow is what it pins, the model is a part
+      model ??= "stub"
+      await api.flushSaves() // what is being typed lands first: the model sees the buffer as everyone does
+      const { repo } = branch.value, existing = api.bufferLines(), current = existing.map((l) => l.text).join("\n"), room = slug(brief)
+      const user = current.trim() && current.length < 6000
+        ? `${brief}\n\nModify the file below to do that. Keep every line you do not need to change exactly as it is, in its place, and output the whole file:\n\n${current}`
+        : brief
+      say(`${model} is writing…`)
+      // What the model dictates is FITTED onto the buffer as it arrives, with one line of
+      // lookahead: a line the buffer already holds is an anchor and keeps its node; what
+      // came since the last anchor stands where the skipped lines stood — rewritten in
+      // place under the same id, inserted between neighbours, or removed. A blank line or
+      // a lone closing tag anchors only with its follower, so it never hooks the wrong spot.
+      let held = null, imported = false, i = 0, prevOrder = undefined, fresh = [], changed = 0
+      const trivial = (t) => t.trim().length <= 3
+      const place = async (upto) => {
+        const gone = existing.slice(i, upto), reuse = Math.min(gone.length, fresh.length)
+        for (let t = 0; t < reuse; t++) if (gone[t].text !== fresh[t]) { changed++; await api.putLine(repo, branch.id, fresh[t], gone[t].order, gone[t].id) }
+        for (let t = reuse; t < gone.length; t++) { changed++; await api.remove(gone[t].id) }
+        if (fresh.length > reuse) {
+          const keys = api.keysBetween(reuse ? gone[reuse - 1].order : prevOrder, existing[upto]?.order, fresh.length - reuse)
+          for (let t = reuse; t < fresh.length; t++) { changed++; await api.putLine(repo, branch.id, fresh[t], keys[t - reuse]) }
+          prevOrder = keys.at(-1)
+        } else if (reuse) prevOrder = gone[reuse - 1].order
+        fresh = []
+      }
+      const decide = async (line, next) => {
+        const j = existing.findIndex((l, idx) => idx >= i && idx < i + 40 && l.text === line && (!trivial(line) || (next === null ? idx === existing.length - 1 : existing[idx + 1]?.text === next)))
+        if (j < 0) return fresh.push(line)
+        await place(j); prevOrder = existing[j].order; i = j + 1
+      }
+      const feed = async (line) => { if (held !== null) await decide(held, line); held = line }
+      const land = async (line) => { // the platform's skeleton is enforced on the way in, whatever the model did with the rules
+        if (/^```/.test(line)) return
+        if (/<script(?![^>]*type=)/.test(line)) line = line.replace("<script", '<script type="module"')
+        if (line.includes(IMPORT)) imported = true
+        if (/\bgdb\(/.test(line) && !imported) { await feed(line.match(/^\s*/)[0] + IMPORT); imported = true }
+        await feed(line.replace(/gdb\(\s*["'](my-app-name|room-name|app|my-app|shared-todos)["']/, `gdb("${room}"`))
+      }
+      const chunks = await engine.chat.completions.create({ messages: [{ role: "system", content: prompt }, { role: "user", content: user }], stream: true, temperature: 0.2, max_tokens: 6000 })
+      let tail = ""
+      for await (const chunk of chunks) {
+        tail += chunk.choices[0]?.delta?.content ?? ""
+        let cut
+        while ((cut = tail.indexOf("\n")) >= 0) { await land(tail.slice(0, cut)); tail = tail.slice(cut + 1) }
+      }
+      if (tail.trim()) await land(tail)
+      if (held !== null) await decide(held, null)
+      await place(existing.length) // whatever the buffer still held past the last anchor is gone
+      api.proposeMessage(brief.slice(0, 120))
+      api.notice(changed ? `The agent changed ${changed} line${changed === 1 ? "" : "s"}. Commit them as yours, or discard.` : "The agent left the file as it is.")
+      input.value = ""
+    } catch (err) { api.notice(err.message) } finally { input.disabled = false; say(""); input.focus() }
   })
-
-  // ── The channel, both ways ────────────────────────────────────────────
-  const announce = (peerId) => api.presence.send({ kind: "agent-status", address: desk.address, text: busy ? "working…" : "ready" }, peerId)
-  api.presence.on("message", (msg) => {
-    if (msg.kind === "agent-ping") { if (isDesk() && desk.state === "ready") announce(); return }
-    if (msg.kind === "agent-brief") { if (isDesk()) { queue.push(msg); drain() } return }
-    if (msg.kind !== "agent-status" || isDesk()) return
-    clearTimeout(pingTimer) // a desk is here
-    if (msg.address) { agentAddress = msg.address; api.name(msg.address, "agent") }
-    boxSay(msg.text === "ready" ? "" : msg.text)
-    if (msg.text === "ready") hand()
-    if (msg.branch && msg.repo) { // watch it write, then hold what it proposed
-      if (!msg.done) location.hash = `#/r/${msg.repo}/${msg.branch}`
-      else api.notice(`The agent committed ${api.short(msg.done)} and opened a pull request: merge it from Pulls, or keep editing its branch.`)
-    }
-  })
-
-  const route = () => { form.hidden = isDesk() || !location.hash.startsWith("#/r/"); if (isDesk()) startDesk() }
-  addEventListener("hashchange", route); route()
 }
