@@ -921,7 +921,7 @@ const repoSkeleton = (repo) => `<section class="repo">
     <div class="preview-head">running <span class="what" id="preview-what">—</span><label><input type="checkbox" id="autorun" checked> auto</label><button class="small" data-act="run">Run</button><button class="small" data-act="download" title="The buffer as one .html file — HTML, CSS and JavaScript together, ready to open anywhere">Download .html</button><button class="small" data-act="discard" id="discard">Discard changes</button></div>
     <iframe id="preview" class="preview" sandbox="allow-scripts" title="The running project"></iframe>
       </div>
-      <div class="tab" id="tab-history"><div class="graph"><svg id="graph" aria-hidden="true"></svg><ol id="commits"></ol></div><div id="commit-panel" class="commit-panel"></div></div>
+      <div class="tab" id="tab-history"><div class="graph"><svg id="graph" aria-hidden="true"></svg><ol id="commits"></ol></div><div id="history-splitter" class="splitter row" role="separator" aria-orientation="horizontal" aria-label="Resize the timeline" tabindex="0"></div><div id="commit-panel" class="commit-panel"></div></div>
       <div class="tab" id="tab-pulls"><ul id="prs" class="prs"></ul><div id="pr-form-box"></div></div>
       <div class="tab" id="tab-branches"><ul id="branches"></ul><div id="branch-form-box"></div><h2 id="collabs-title">Collaborators</h2><ul id="collabs" class="collabs"></ul><div id="collab-form-box"></div><h2 id="members-title" class="hidden">Members</h2><ul id="members" class="members hidden"></ul><div id="member-form-box"></div></div>
     </div>
@@ -1105,7 +1105,7 @@ const renderRepo = (r, main) => {
   const branches = branchesOf(repo.id), commits = commitsOf(repo.id), prs = prsOf(repo.id)
   const branch = branches.find((b) => b.id === r.branch) ?? defaultBranch(repo, branches)
   const selected = commitOf(r.commit)?.id ?? branch?.value.head ?? null
-  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "preview"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false) }
+  if (main.dataset.repo !== repo.id) { main.innerHTML = repoSkeleton(repo); main.dataset.repo = repo.id; main.dataset.branch = ""; main.classList.add("full"); showTab(sessionStorage.dcodeTab ?? "preview"); showView(sessionStorage.dcodeView ?? "html"); if (localStorage.dcodeSplit) setDocWidth(Number(localStorage.dcodeSplit), false); if (localStorage.dcodeHistorySplit) setTimelineHeight(Number(localStorage.dcodeHistorySplit), false) }
   // The editor follows the timeline: a selected commit is shown read-only, and
   // letting go of it brings the branch's buffer back.
   const viewing = r.commit && commitOf(r.commit) ? r.commit : ""
@@ -1134,6 +1134,15 @@ const renderSession = () => { // the pill: name · abbreviated address, opening 
 
 // ── The divider between the panels is the resize control ───────────────────
 const MIN_DOC = 360, MIN_RIGHT = 320
+const MIN_TIMELINE = 90, MIN_DIFF = 140
+/** The timeline's height inside History; the diff takes the rest and scrolls on its own. */
+const setTimelineHeight = (px, persist = true) => {
+  const tab = $("tab-history"); if (!tab) return
+  const available = tab.clientHeight, ceiling = available ? Math.max(available - MIN_DIFF, MIN_TIMELINE) : Infinity
+  const height = Math.round(Math.min(Math.max(px, MIN_TIMELINE), ceiling))
+  tab.style.setProperty("--timeline-height", `${height}px`)
+  if (persist) localStorage.dcodeHistorySplit = height
+}
 const setDocWidth = (px, persist = true) => {
   const bench = $("bench"); if (!bench) return
   const available = bench.clientWidth, ceiling = available ? Math.max(available - MIN_RIGHT, MIN_DOC) : Infinity
@@ -1142,17 +1151,22 @@ const setDocWidth = (px, persist = true) => {
   if (persist) localStorage.dcodeSplit = width
 }
 document.addEventListener("pointerdown", (event) => {
-  const splitter = event.target.closest("#splitter"); if (!splitter) return
+  const splitter = event.target.closest("#splitter, #history-splitter"); if (!splitter) return
   event.preventDefault(); splitter.setPointerCapture(event.pointerId)
-  const startX = event.clientX, startWidth = $("bench").firstElementChild.getBoundingClientRect().width
-  const onMove = (move) => setDocWidth(startWidth + move.clientX - startX)
+  const row = splitter.id === "history-splitter"
+  const start = row ? event.clientY : event.clientX
+  const from = (row ? $("tab-history").querySelector(".graph") : $("bench").firstElementChild).getBoundingClientRect()[row ? "height" : "width"]
+  const onMove = (move) => (row ? setTimelineHeight : setDocWidth)(from + (row ? move.clientY : move.clientX) - start)
   splitter.addEventListener("pointermove", onMove)
   splitter.addEventListener("pointerup", () => splitter.removeEventListener("pointermove", onMove), { once: true })
 })
 document.addEventListener("keydown", (event) => {
-  if (event.target.id !== "splitter") return
-  const step = { ArrowLeft: -16, ArrowRight: 16 }[event.key]; if (!step) return
-  event.preventDefault(); setDocWidth($("bench").firstElementChild.getBoundingClientRect().width + step)
+  const row = event.target.id === "history-splitter"
+  if (event.target.id !== "splitter" && !row) return
+  const step = (row ? { ArrowUp: -16, ArrowDown: 16 } : { ArrowLeft: -16, ArrowRight: 16 })[event.key]; if (!step) return
+  event.preventDefault()
+  if (row) setTimelineHeight($("tab-history").querySelector(".graph").getBoundingClientRect().height + step)
+  else setDocWidth($("bench").firstElementChild.getBoundingClientRect().width + step)
 })
 
 // ── Events ──────────────────────────────────────────────────────────────────

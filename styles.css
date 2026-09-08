@@ -269,6 +269,13 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 /* The line between the panels is the resize control: an 11px hit area
    around a 1px rule, two short bars centred on it to say it moves. */
 .splitter { position: relative; cursor: col-resize; touch-action: none; }
+/* The same divider, lying down: the timeline keeps its height, the diff takes the rest. */
+.splitter.row { flex: none; height: 11px; cursor: row-resize; }
+.splitter.row::before { inset: 5px 0 auto 0; width: auto; height: 1px; }
+.splitter.row::after { width: 28px; height: 5px; border: none; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+#tab-history { display: flex; flex-direction: column; overflow: hidden; }
+#tab-history .graph { flex: none; height: var(--timeline-height, 40%); min-height: 90px; overflow-y: auto; }
+#tab-history .commit-panel { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0; padding-top: var(--s3); }
 .splitter::before { content: ""; position: absolute; inset: 0 auto 0 5px; width: 1px; background: var(--border-subtle); }
 .splitter::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 28px; transform: translate(-50%, -50%); border-left: 1px solid var(--border-strong); border-right: 1px solid var(--border-strong); background: var(--bg-primary); }
 .splitter:hover::after, .splitter:focus-visible::after { border-color: var(--accent); }
