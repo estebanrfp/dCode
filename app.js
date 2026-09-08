@@ -972,16 +972,23 @@ const renderCollabs = (repo, branch) => {
 }
 // A private repository's members: the addresses holding an envelope on its
 // vault. The owner grants and revokes them there; a revocation turns the key.
+// The members of a private repository are the envelopes on its vault, and reading
+// them is a round trip. It happens when the vault changes, not on every render —
+// a commit arriving from another peer must not cost an ACL read.
+let membersRead = null // { vault, perms }
+const forgetMembers = () => { membersRead = null }
 const renderMembers = async (repo) => {
   const list = $("members"); if (!list) return
   const vault = repo.value.vault
-  $("members-title").classList.toggle("hidden", !vault); list.classList.toggle("hidden", !vault); $("member-form-box").innerHTML = ""
-  if (!vault) return
-  const perms = await db.sm.acls.getPermissions(vault).catch(() => null)
+  $("members-title").classList.toggle("hidden", !vault); list.classList.toggle("hidden", !vault)
+  if (!vault) { $("member-form-box").innerHTML = ""; return }
+  if (membersRead?.vault !== vault) membersRead = { vault, perms: await db.sm.acls.getPermissions(vault).catch(() => null) }
+  const perms = membersRead.perms
   if (!$("members") || $("main").dataset.repo !== repo.id) return // navigated away while reading
   const mine = eqAddr(repo.value.owner, me)
   const rows = [[perms?.owner ?? repo.value.owner, "owner"], ...Object.keys(perms?.collaborators ?? {}).map((a) => [a, "read"])]
   $("members").innerHTML = rows.map(([addr, level]) => `<li data-member="${esc(addr)}"><span class="addr" title="${esc(addr)}">${esc(nameOf(addr))}</span><span class="n">${esc(level)}</span>${mine && level !== "owner" ? `<button class="small" data-act="revoke-member" data-address="${esc(addr)}">Revoke</button>` : ""}</li>`).join("")
+  if ($("member-form-box").contains(document.activeElement)) return // an address is being typed in: leave the form alone
   $("member-form-box").innerHTML = mine ? `<form id="member-form" class="row"><input type="text" name="address" class="mono" placeholder="0x… address — must have signed in once" pattern="0x[0-9a-fA-F]{40}" required autocomplete="off"><button type="submit" class="small">Grant read</button></form><p class="dim">A member holds a key envelope on the repository's vault. Revoking one turns the key: what is written afterwards stays unreadable to them.</p>` : ""
 }
 function renderRepoBar() {
@@ -1197,8 +1204,8 @@ document.addEventListener("click", async (e) => {
       const { result } = await db.sm.get(repo.value.vault), hex = newKeyHex()   // and the repository key turns: a new one on the ring
       await db.sm.put({ ...result.value, keys: [hex, ...result.value.keys] }, repo.value.vault)
       keyRings.set(repo.id, [await importKey(hex), ...(keyRings.get(repo.id) ?? [])])
-      toast(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`)
-      renderMembers(repo); return
+      toast(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`, "success")
+      forgetMembers(); renderMembers(repo); return
     }
     if (act === "edit-repo") {
       const repo = nodes.get(route().repo), f = $("repo-form"); if (!repo || !f) return
@@ -1278,7 +1285,7 @@ document.addEventListener("submit", async (e) => {
     if (f.id === "member-form") { // an envelope on the vault: the engine wraps the key for an address that has signed in once
       const address = field("address")
       await db.sm.acls.grant(repo.value.vault, address, "read")
-      f.reset(); toast(`${nameOf(address)} holds the key now; their page opens on its own.`); renderMembers(repo); return
+      f.reset(); toast(`${nameOf(address)} holds the key now; their page opens on its own.`, "success"); forgetMembers(); renderMembers(repo); return
     }
     if (f.id === "repo-form") { // the repository node is the owner's: a rename is one write on it
       await patch(repo.id, { name: field("name"), description: field("description") })
@@ -1350,7 +1357,7 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
   if (value && value.type === undefined) {
     const repo = of("repo").find((r) => r.value.vault && id.endsWith(r.value.vault))
-    if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); unlock(repo.id) }
+    if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); forgetMembers(); unlock(repo.id) }
     return
   }
   const known = nodes.get(id)
