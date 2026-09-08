@@ -57,7 +57,7 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await v.close()
 })
 
-test("the door offers a reset for testing: this device's graph goes, and the room comes back empty behind the door", async ({ browser }) => {
+test("the door's reset for testing wipes this device and moves it to a fresh, empty room", async ({ browser }) => {
   const room = freshRoom("reset")
   const v = await visitor(browser, room)
   await loginAs(v, "Alice")
@@ -67,9 +67,10 @@ test("the door offers a reset for testing: this device's graph goes, and the roo
   await v.page.locator("#logout-btn").click() // signed out is the door's state
   await expect(door(v.page)).toHaveAttribute("open", "")
   await v.page.locator("#reset-btn").click()
-  await expect(v.page.locator("#door-status")).toContainText("This device's graph is empty")
+  await expect(v.page).toHaveURL(/room=test-[a-z0-9]+/) // a new room, in the URL: what to open elsewhere to meet there
+  await expect(v.page).not.toHaveURL(new RegExp(`room=${room}`))
+  await expect(door(v.page)).toHaveAttribute("open", "", { timeout: 60_000 }) // booted again, no session, the door
   await dismissDoor(v)
-  await expect(v.page.locator(".repos li")).toHaveCount(0)
   await expect(v.page.locator(".empty")).toContainText("No repositories in this room yet")
   await v.close()
 })

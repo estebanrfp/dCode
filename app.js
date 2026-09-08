@@ -1111,10 +1111,13 @@ document.addEventListener("click", async (e) => {
     }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
-    if (a.id === "reset-btn") { // testing, in the door — before anything is under way: db.clear() wipes this device; the local mirrors are cleared by hand, since clear() is not a stream of removals the subscription can follow
+    if (a.id === "reset-btn") { // testing, in the door — before anything is under way. A reset in a P2P database is a NEW ROOM: db.clear()
+      // wipes this device's copy, but every other tab, browser and visitor still holds the graph and would hand it back on the next
+      // connection. So this window moves to a fresh room, empty from its first second; its URL is what to open elsewhere to meet there.
       e.preventDefault(); a.disabled = true
-      await db.clear(); nodes.clear(); plain.clear(); pendingMerge.clear(); keyRings.clear(); scheduleRender()
-      say("door-status", "This device's graph is empty. Peers still holding the room bring it back when they connect — reset them too, or open a new room."); a.disabled = false; return
+      await db.clear()
+      const next = new URLSearchParams(location.search); next.set("room", `test-${Date.now().toString(36)}`)
+      location.replace(`${location.pathname}?${next}#/`); return
     }
     if (a.classList.contains("demo-login")) {
       e.preventDefault(); const id = DEMO_IDENTITIES.find((i) => eqAddr(i.address, a.dataset.address))
