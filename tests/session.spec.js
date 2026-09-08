@@ -4,7 +4,7 @@
  * only at onboarding — the gap the design guide closed with this app.
  */
 import { expect, test } from "@playwright/test"
-import { ADDR, dismissDoor, door, freshRoom, go, loginAs, virtualAuthenticator, visitor } from "./_helpers.js"
+import { ADDR, createRepo, dismissDoor, door, freshRoom, go, loginAs, virtualAuthenticator, visitor } from "./_helpers.js"
 
 test("a phrase session is protected with a passkey from the identity view; the passkey resumes it after a reload", async ({ browser }) => {
   const v = await visitor(browser, freshRoom("session"))
@@ -56,3 +56,24 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await expect(root).toHaveAttribute("data-theme", "light") // on `system`, the OS decides
   await v.close()
 })
+
+test("the authority alone can reset this device's graph from the home page, asked twice; a guest sees no such button", async ({ browser }) => {
+  const room = freshRoom("reset")
+  const v = await visitor(browser, room)
+  await loginAs(v, "Superadmin")
+  await createRepo(v, "throwaway")
+  await go(v, "#/")
+  await expect(v.page.locator(".repos li")).toHaveCount(1)
+  await v.page.locator('[data-act="reset-room"]').click()
+  await expect(v.page.locator('[data-act="reset-room"]')).toHaveText("Reset, really?")
+  await v.page.locator('[data-act="reset-room"]').click()
+  await expect(v.page.locator("#notice")).toContainText("This device's graph is empty")
+  await expect(v.page.locator(".repos li")).toHaveCount(0)
+  await expect(v.page.locator(".empty")).toContainText("No repositories in this room yet")
+  await v.page.locator("#logout-btn").click()
+  await loginAs(v, "Alice")
+  await go(v, "#/")
+  await expect(v.page.locator('[data-act="reset-room"]')).toHaveCount(0)
+  await v.close()
+})
+
