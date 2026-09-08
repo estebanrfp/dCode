@@ -997,9 +997,10 @@ function renderRepoBar() {
   $("discard").disabled = !dirty
   $("commit-btn").textContent = viewing ? "Reading a version" : !me ? "Sign in to commit" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
   $("commit-btn").disabled = !me || !!viewing
-  $("commit-hint").innerHTML = viewing
-    ? `${esc(short(viewing))} as it was, read-only. <a href="#/r/${esc(repo.id)}/${esc(branch.id)}">Back to the buffer</a>`
-    : !me || writable ? "" : `Everyone edits this buffer; only ${esc(nameOf(branch.value.owner))} moves ${esc(branchLabel(repo, branch))}. Your commit will go to a branch of yours, forked from here.`
+  // Why the button says what it says belongs to the button. The line below the
+  // bar is for what you can act on, and appears only then.
+  $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
+  $("commit-hint").innerHTML = viewing ? `${esc(short(viewing))} as it was, read-only. <a href="#/r/${esc(repo.id)}/${esc(branch.id)}">Back to the buffer</a>` : ""
   const banner = $("merge-banner")
   banner.classList.toggle("hidden", !merging)
   if (merging) banner.textContent = `Merging ${short(merging.parents[0])}: resolve the conflict markers (<<<<<<<, =======, >>>>>>>) and commit. The commit will have two parents.`
