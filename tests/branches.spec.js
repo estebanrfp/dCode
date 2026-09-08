@@ -114,3 +114,29 @@ test("a collaborator granted write moves the head directly; revoked, they are ba
   await expect(bob.page.locator("#commit-btn")).toHaveText("Fork and commit")
   await alice.close(); await bob.close()
 })
+
+test("a branch you own can be deleted — asked twice — and its lines go with it everywhere; main and other people's branches offer no such thing", async ({ browser }) => {
+  const room = freshRoom("delete")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "alice"); await loginAs(bob, "bob")
+  await connected(alice); await connected(bob)
+  const { repo } = await createRepo(alice, "prune")
+  await tab(alice, "branches")
+  await alice.page.locator('#branch-form [name="name"]').fill("scratch")
+  await alice.page.locator('#branch-form button[type="submit"]').click()
+  await expect(alice.page.locator("#branch-select option:checked")).toHaveText("scratch")
+  await go(bob, `#/r/${repo}`); await tab(bob, "branches")
+  await expect(branchRows(bob.page)).toHaveCount(2)
+  await expect(bob.page.locator('[data-act="delete-branch"]')).toHaveCount(0) // not his branches
+  await tab(alice, "branches")
+  await expect(alice.page.locator('[data-act="delete-branch"]')).toHaveCount(1) // scratch, never main
+  await alice.page.locator('[data-act="delete-branch"]').click()
+  await expect(alice.page.locator('[data-act="delete-branch"]')).toHaveText("Delete, really?")
+  await alice.page.locator('[data-act="delete-branch"]').click()
+  await expect(alice.page.locator("#notice")).toContainText("Deleted scratch")
+  await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // she stood on it: back to main
+  await expect(branchRows(alice.page)).toHaveCount(1)
+  await expect(branchRows(bob.page)).toHaveCount(1) // gone on the other side of the wire too
+  await alice.close(); await bob.close()
+})
+

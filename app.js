@@ -892,7 +892,7 @@ const showView = (name) => {
 const renderBranches = (repo, branches, branch, commits, fromId) => {
   const counts = new Map()
   for (const c of commits) counts.set(c.value.branch, (counts.get(c.value.branch) ?? 0) + 1)
-  $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="#/r/${esc(repo.id)}/${esc(b.id)}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span></li>`).join("") || `<li class="dim">no branches</li>`
+  $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="#/r/${esc(repo.id)}/${esc(b.id)}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span>${eqAddr(b.value.owner, me) && b.id !== defaultBranch(repo, branches)?.id ? `<button class="small ghost" data-act="delete-branch" data-branch="${esc(b.id)}" title="Delete this branch: its buffer goes, its commits stay">Delete</button>` : ""}</li>`).join("") || `<li class="dim">no branches</li>`
   $("branch-form-box").innerHTML = me && fromId ? `<form id="branch-form" class="row"><input type="text" name="name" placeholder="new branch" pattern="[A-Za-z0-9._\\-]{1,40}" required autocomplete="off"><button type="submit" class="small">Branch from ${esc(short(fromId))}</button></form>` : ""
   const select = $("branch-select")
   select.innerHTML = branches.map((b) => `<option value="${esc(b.id)}"${b.id === branch?.id ? " selected" : ""}>${esc(branchLabel(repo, b))}${eqAddr(b.value.owner, me) ? "" : ` · ${esc(nameOf(b.value.owner))}`}</option>`).join("")
@@ -1101,6 +1101,14 @@ document.addEventListener("click", async (e) => {
     if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
     if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
     if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
+    if (act === "delete-branch") { // yours, never the default: asked twice, then the buffer's lines go and the branch node goes; the commits are history and stay
+      if (!a.dataset.armed) { a.dataset.armed = "1"; a.textContent = "Delete, really?"; setTimeout(() => { a.dataset.armed = ""; a.textContent = "Delete" }, 4000); return }
+      const b = nodes.get(a.dataset.branch); if (!b) return
+      const r = route(), standing = r.branch === b.id
+      await Promise.all(linesOf(b.id).map((n) => db.remove(n.id))); await db.remove(b.id)
+      notice(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
+      if (standing) location.hash = `#/r/${b.value.repo}`; return
+    }
     if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); notice(`Revoked ${nameOf(a.dataset.address)}.`) } return }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
     if (a.classList.contains("demo-login")) {
