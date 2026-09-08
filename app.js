@@ -1004,7 +1004,7 @@ function renderRepoBar() {
   if (merging) banner.textContent = `Merging ${short(merging.parents[0])}: resolve the conflict markers (<<<<<<<, =======, >>>>>>>) and commit. The commit will have two parents.`
   if (merging && !$("message").value) $("message").value = merging.message
 }
-const renderTimeline = (repo, branches, commits, selected) => {
+const renderTimeline = (repo, branches, commits, selected, standing) => {
   // The lanes are the branches, one colour each, and a lane is drawn as one
   // stroke from its first commit to its last — a fork leaves that stroke and a
   // merge rejoins it, which is the shape that makes the topology readable.
@@ -1020,11 +1020,17 @@ const renderTimeline = (repo, branches, commits, selected) => {
     const cx = X0 + DX * (l % LANES)
     return `<path class="g-line" style="stroke: var(--lane-${l % LANES})" d="M${cx} ${y(rows[0])} L${cx} ${y(rows.at(-1))}"/>`
   })
-  // A parent in another lane: the curve that forked from it, or merged into it.
+  // A parent in another lane: straight down its own lane, one rounded elbow, and
+  // straight across to the parent — a fork and a merge read as right angles, not
+  // as a swerve, which is what makes two lanes beside each other legible.
+  const R = 7
   const links = commits.flatMap((c, i) => (c.value.parents ?? []).map((p) => {
     const j = index.get(p); if (j === undefined || lane(commits[j]) === lane(c)) return ""
-    const x1 = x(c), y1 = y(i), x2 = x(commits[j]), y2 = y(j), ym = (y1 + y2) / 2
-    return `<path class="g-line" style="stroke: var(--lane-${lane(c) % LANES})" d="M${x1} ${y1} C${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"/>`
+    const x1 = x(c), y1 = y(i), x2 = x(commits[j]), y2 = y(j), dir = x2 > x1 ? 1 : -1
+    const d = Math.abs(y2 - y1) > R
+      ? `M${x1} ${y1} V${y2 - R} Q${x1} ${y2} ${x1 + dir * R} ${y2} H${x2}`
+      : `M${x1} ${y1} H${x2}`
+    return `<path class="g-line" style="stroke: var(--lane-${lane(c) % LANES})" d="${d}"/>`
   }))
   const dots = commits.map((c, i) => {
     const cls = `g-dot${tipsAt(branches, c.id).length ? " head" : ""}${c.id === selected ? " sel" : ""}`
@@ -1037,7 +1043,8 @@ const renderTimeline = (repo, branches, commits, selected) => {
   g.innerHTML = lines.join("") + dots.join("")
   $("commits").innerHTML = commits.map((c) => {
     const tips = tipsAt(branches, c.id)
-    return `<li data-commit="${esc(c.id)}" class="${c.id === selected ? "sel" : ""}${tips.length ? " head" : ""}" title="${esc(c.value.message)} — ${esc(nameOf(c.value.owner))}, ${new Date(c.value.at).toLocaleString()}"><span class="msg">${esc(c.value.message)}</span>${tips.map((b) => `<span class="chip${eqAddr(b.value.owner, me) ? " mine" : ""}">${esc(branchLabel(repo, b))}</span>`).join("")}<span class="meta"><span class="h">${esc(short(c.id))}</span><span class="who">${esc(nameOf(c.value.owner))}</span><span class="when">${ago(c.value.at)}</span></span></li>`
+    const here = standing && c.id === standing.value.head // the head of the branch you stand on: this is your checkout
+    return `<li data-commit="${esc(c.id)}" class="${c.id === selected ? "sel" : ""}${tips.length ? " head" : ""}${here ? " here" : ""}" title="${esc(c.value.message)} — ${esc(nameOf(c.value.owner))}, ${new Date(c.value.at).toLocaleString()}"><span class="tick" aria-label="${here ? "Your checkout" : ""}">${here ? "✓" : ""}</span><span class="msg">${esc(c.value.message)}</span>${tips.map((b) => `<span class="chip" style="--chip: var(--lane-${branches.findIndex((x) => x.id === b.id) % 5})">${esc(branchLabel(repo, b))}</span>`).join("")}<span class="meta"><span class="h">${esc(short(c.id))}</span><span class="who">${esc(nameOf(c.value.owner))}</span><span class="when">${ago(c.value.at)}</span></span></li>`
   }).join("") || `<li class="dim">no commits yet</li>`
 }
 const renderCommitPanel = (repo, branch, id) => {
@@ -1111,7 +1118,7 @@ const renderRepo = (r, main) => {
   renderCollabs(repo, branch)
   renderMembers(repo)
   renderRepoBar()
-  renderTimeline(repo, branches, commits, selected)
+  renderTimeline(repo, branches, commits, selected, branch)
   renderCommitPanel(repo, branch, selected)
   document.title = `${repo.value.name}${branch ? ` · ${branchLabel(repo, branch)}` : ""} · dCode`
 }

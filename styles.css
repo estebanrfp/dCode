@@ -385,13 +385,18 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .graph .meta { margin-left: auto; display: grid; grid-template-columns: 7ch 8ch 7rem; gap: var(--s3); color: var(--text-tertiary); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
 .graph .meta > span { overflow: hidden; text-overflow: ellipsis; }
 .graph .meta .when { text-align: right; }
-.chip { display: inline-block; padding: 0 6px; border-radius: 10px; font: 11px/18px var(--mono); border: 1px solid var(--border-strong); color: var(--text-secondary); flex-shrink: 0; }
-.chip.mine { border-color: var(--accent); color: var(--accent); }
+.chip::before { content: "⑂"; margin-right: 4px; opacity: .8; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 10px; font: 11px/18px var(--mono); border: 1px solid var(--chip, var(--border-strong)); color: var(--chip, var(--text-secondary)); background: color-mix(in srgb, var(--chip, transparent) 12%, transparent); flex-shrink: 0; }
 /* One colour per lane, so a fork and a merge are read rather than counted. */
 .graph { --lane-0: var(--accent); --lane-1: var(--violet); --lane-2: var(--ok); --lane-3: var(--warn); --lane-4: var(--danger); }
-.g-line { stroke: var(--border-strong); stroke-width: 2; fill: none; stroke-linecap: round; opacity: .75; }
+.g-line { stroke: var(--border-strong); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .g-dot { fill: var(--bg-secondary); stroke: var(--text-tertiary); stroke-width: 2; }
 .g-dot.sel { stroke-width: 3.5; }
+/* The tick marks the head of the branch you stand on — your checkout. */
+.graph .tick { flex: 0 0 12px; text-align: center; color: var(--ok); font-size: 12px; }
+.graph li:nth-child(even) { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+.graph li.sel:nth-child(even), .graph li.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.graph li.here .msg { color: var(--text-primary); font-weight: 600; }
 .commit-panel { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--border-subtle); }
 .commit-panel .meta { font-size: 12px; color: var(--text-tertiary); font-family: var(--mono); overflow-wrap: anywhere; }
 .commit-panel .actions { display: flex; gap: var(--s1); flex-wrap: wrap; margin: var(--s2) 0; }
