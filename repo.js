@@ -56,8 +56,14 @@ const repoSkeleton = (repo) => `<section class="repo">
   </section>
 </div></section>`
 
+// The dock draws the panel you are looking at, and only that one: a diff of a
+// two-thousand-line file costs 21 ms of the main thread and a timeline grows
+// with the repository, and neither is work worth doing behind another panel.
+// Bringing one up draws it, so what a panel shows is never older than a frame.
+const dockTab = () => sessionStorage.dcodeTab ?? "preview"
 const showTab = (name) => {
   sessionStorage.dcodeTab = name
+  scheduleRender()
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("sel", b.dataset.tab === name))
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${name}`))
 }
@@ -70,14 +76,17 @@ const download = (html, name) => {
 }
 const fileName = (repo, suffix = "") => `${repo?.value.name ?? "index"}${suffix}.html`
 
+/** The branch picker sits in the bar, not in a panel: it is drawn whatever tab is up. */
+const renderBranchSelect = (repo, branches, branch) => {
+  const select = $("branch-select")
+  if (document.activeElement === select) return // open, or being chosen from: repainting it under the pointer closes it and loses the choice
+  select.innerHTML = branches.map((b) => `<option value="${esc(b.id)}"${b.id === branch?.id ? " selected" : ""}>${esc(branchLabel(repo, b))}${eqAddr(b.value.owner, me) ? "" : ` · ${esc(nameOf(b.value.owner))}`}</option>`).join("")
+}
 const renderBranches = (repo, branches, branch, commits, fromId) => {
   const counts = new Map()
   for (const c of commits) counts.set(c.value.branch, (counts.get(c.value.branch) ?? 0) + 1)
   $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="${esc(at(repo.id, b.id))}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span>${eqAddr(b.value.owner, me) && b.id !== defaultBranch(repo, branches)?.id ? `<button class="small ghost" data-act="delete-branch" data-branch="${esc(b.id)}" title="Delete this branch: its buffer goes, its commits stay">Delete</button>` : ""}</li>`).join("") || `<li class="dim">no branches</li>`
   $("branch-form-box").innerHTML = me && fromId ? `<form id="branch-form" class="row"><input type="text" name="name" placeholder="new branch" pattern="[A-Za-z0-9._\\-]{1,40}" required autocomplete="off"><button type="submit" class="small">Branch from ${esc(short(fromId))}</button></form>` : ""
-  const select = $("branch-select")
-  if (document.activeElement === select) return // open, or being chosen from: repainting it under the pointer closes it and loses the choice
-  select.innerHTML = branches.map((b) => `<option value="${esc(b.id)}"${b.id === branch?.id ? " selected" : ""}>${esc(branchLabel(repo, b))}${eqAddr(b.value.owner, me) ? "" : ` · ${esc(nameOf(b.value.owner))}`}</option>`).join("")
 }
 const renderPRs = (repo, branches, branch, prs) => {
   $("prs").innerHTML = prs.map((pr) => {
@@ -193,11 +202,7 @@ const renderTimeline = (repo, branches, commits, selected, standing) => {
 const renderCommitPanel = (repo, branch, id) => {
   const c = commitOf(id)
   if (!c) { $("commit-panel").innerHTML = `<p class="dim">Select a commit to read its diff, and to run it.</p>`; return }
-  // Selecting a version runs it: reading history writes nothing and asks nobody.
-  // The buffer comes back the moment the selection is dropped.
-  const content = contentOf(c.id)
-  if (lastRun !== content) runPreview(content, `${short(c.id)} — ${c.value.message}`)
-  const parent = commitOf(c.value.parents?.[0])
+  const content = contentOf(c.id), parent = commitOf(c.value.parents?.[0])
   const rows = diffLines(parent ? contentOf(parent.id).split("\n") : [], content.split("\n"))
   const added = rows.filter((r) => r.kind === "add").length, removed = rows.filter((r) => r.kind === "del").length
   const LIMIT = 400, shown = rows.slice(0, LIMIT)
@@ -289,13 +294,16 @@ export const renderRepo = (r, main) => {
   else if (!viewing && branch && (main.dataset.branch !== branch.id || main.dataset.viewing)) { main.dataset.viewing = ""; main.dataset.branch = branch.id; mountBuffer(repo.id, branch.id) }
   // A repository whose branch has not arrived is not an empty file: say so, rather than showing a blank editor that invites typing into nothing.
   if (!branch && !buffer()?.querySelector(".line")) { main.dataset.branch = ""; buffer().innerHTML = `<p class="waiting">This repository is here, its branch is not. Nothing on this device can open it until a peer that holds the branch is online${me ? "" : " — or sign in and start your own"}.</p>` }
-  renderBranches(repo, branches, branch, commits, selected)
-  renderPRs(repo, branches, branch, prs)
-  renderCollabs(repo, branch)
-  renderMembers(repo)
+  renderBranchSelect(repo, branches, branch)
   renderRepoBar()
-  renderTimeline(repo, branches, commits, selected, branch)
-  renderCommitPanel(repo, branch, selected)
+  // Selecting a version runs it: reading history writes nothing and asks nobody,
+  // and the buffer comes back the moment the selection is dropped.
+  const version = viewing && commitOf(viewing)
+  if (version && lastRun !== contentOf(version.id)) runPreview(contentOf(version.id), `${short(version.id)} — ${version.value.message}`)
+  const tab = dockTab()
+  if (tab === "history") { renderTimeline(repo, branches, commits, selected, branch); renderCommitPanel(repo, branch, selected) }
+  else if (tab === "pulls") renderPRs(repo, branches, branch, prs)
+  else if (tab === "branches") { renderBranches(repo, branches, branch, commits, selected); renderCollabs(repo, branch); renderMembers(repo) }
   document.title = `${repo.value.name}${branch ? ` · ${branchLabel(repo, branch)}` : ""} · dCode`
 }
 

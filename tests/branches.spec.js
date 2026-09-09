@@ -18,6 +18,7 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   // Bob edits the shared buffer of main — anyone may — but cannot move main:
   // his commit goes to a branch of his own, forked from where he stood.
   await go(bob, `#/r/${repo}`)
+  await tab(bob, "history")
   await expect(rows(bob.page)).toHaveCount(1)
   await expect(bob.page.locator("#commit-btn")).toHaveText("Fork and commit")
   await setLine(bob, "Hello from dCode", "  <h1>Hello from Bob</h1>")
@@ -25,13 +26,17 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   await commit(bob, "Greet from Bob")
   await expect(bob.page.locator("#branch-select")).toHaveValue(/./)
   await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
+  await tab(bob, "branches")
   await expect(branchRows(bob.page)).toHaveCount(2)
+  await tab(alice, "branches")
   await expect(branchRows(alice.page)).toHaveCount(2)
   await expect(branchRows(alice.page).nth(1)).toContainText("Bob/main")
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(2)
   await expect(head(alice.page)).toHaveText(mainHead)
   // Main's buffer still holds Bob's edit, uncommitted; Alice discards it and main is clean.
   await expect(alice.page.locator("#dirty")).toBeVisible()
+  await tab(alice, "preview") // Discard sits in the panel that runs the page
   await alice.page.locator("#discard").click()
   await expect(alice.page.locator("#dirty")).toBeHidden()
   await seesLine(alice, "Hello from dCode")
@@ -41,6 +46,7 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   await bob.page.locator('#pr-form [name="title"]').fill("Greet from Bob")
   await bob.page.locator('#pr-form button[type="submit"]').click()
   await expect(prRows(bob.page)).toHaveCount(1)
+  await tab(alice, "pulls")
   await expect(prRows(alice.page)).toHaveCount(1)
   await expect(prRows(alice.page).first()).toContainText("open")
   await expect(bob.page.locator('[data-act="merge"]')).toHaveCount(0) // not his branch to merge into
@@ -49,7 +55,9 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   // Bob commits again: the proposal is behind his head, and he brings it up to date.
   await setLine(bob, "This page is one commit", "  <p>Second line from Bob</p>")
   const second = await commit(bob, "A second line")
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(3)
+  await tab(alice, "pulls")
   await expect(prRows(alice.page).first()).toContainText("open, behind")
   await bob.page.locator('[data-act="update-pr"]').click()
   await expect(prRows(alice.page).first()).toHaveText(/open(?!, behind)/)
@@ -65,6 +73,7 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   console.log("tampered write:", outcome)
   await setLine(bob, 'id="count"', '  <button id="count">Third from Bob</button>')
   const third = await commit(bob, "A third line")
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(4) // the sentinel: Bob's later write arrived
   await expect(head(alice.page)).toHaveText(mainHead) // and main did not move
   await expect(rows(alice.page).first()).toContainText(third)

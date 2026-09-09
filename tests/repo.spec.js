@@ -16,6 +16,7 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
 
   const { repo } = await createRepo(alice, "hello-world", "The first repository in this room")
   await expect(lines(alice.page).last().locator(".ln")).toHaveText(String(TEMPLATE_LINES)) // positions, derived
+  await tab(alice, "history")
   await expect(rows(alice.page).first()).toContainText("Initial commit")
   await expect(preview(alice.page)).toContainText("Hello from dCode") // the buffer runs on arrival
 
@@ -42,6 +43,7 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(bob.page.locator("#dirty")).toBeVisible() // uncommitted, on both
   await expect(alice.page.locator("#dirty")).toBeVisible()
   await expect(preview(bob.page)).toContainText("Hello, Bob, from dCode")
+  await tab(bob, "history")
   await expect(rows(bob.page)).toHaveCount(1)
 
   const second = await commit(alice, "Greet by name")
@@ -63,6 +65,7 @@ test("a repository, its shared buffer and its commits cross to another visitor, 
   await expect(bob.page.locator("#commit-panel .diff .add")).toHaveText(/Hello, Bob, from dCode/)
 
   // The project is one file and leaves as one: the buffer downloads as <repo>.html, with what Bob sees.
+  await tab(bob, "preview") // the button lives in the panel that runs the page
   const [file] = await Promise.all([bob.page.waitForEvent("download"), bob.page.locator('[data-act="download"]').click()])
   expect(file.suggestedFilename()).toBe("hello-world.html")
   const saved = readFileSync(await file.path(), "utf8")

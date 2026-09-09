@@ -42,6 +42,7 @@ test("a private repository is sealed for everyone but its members; a grant opens
   await expect(alice.page.locator("#members li").nth(1)).toContainText("Bob")
   await expect(bob.page.locator("#buffer")).toBeVisible()
   await seesLine(bob, "Secret from Alice")
+  await tab(bob, "history")
   await expect(rows(bob.page)).toHaveCount(2)
   await expect(preview(bob.page)).toContainText("Secret from Alice")
 
@@ -49,13 +50,16 @@ test("a private repository is sealed for everyone but its members; a grant opens
   await setLine(bob, "This page is one commit", "  <p>Bob was here</p>")
   await seesLine(alice, "Bob was here")
   const second = await commit(bob, "From Bob") // a fork: read is not write
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(3)
   await persisted(authority, "From Bob")
   expect(await inStore(authority, "Bob was here")).toBe(false)
 
   // The revocation: the engine turns the vault's key and the app turns the repository's.
   // Bob's page closes on its own, and what Alice writes afterwards never opens for him.
+  await tab(alice, "branches") // the members of a private repository live in the branches panel
   await alice.page.locator('[data-act="revoke-member"]').click()
+  await tab(alice, "branches")
   await expect(alice.page.locator("#members li")).toHaveCount(1)
   await expect(bob.page.locator(".locked")).toBeVisible()
   await alice.page.locator("#branch-select").selectOption({ label: "main" })
@@ -71,6 +75,7 @@ test("a private repository is sealed for everyone but its members; a grant opens
   await loginAs(alice, "alice")
   await go(alice, `#/r/${repo}`)
   await seesLine(alice, "After the revocation")
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(4)
   await expect(rows(alice.page).first()).toContainText("Sealed again")
   await expect(preview(alice.page)).toContainText("After the revocation")

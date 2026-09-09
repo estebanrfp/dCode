@@ -118,7 +118,7 @@ export const createRepo = async (v, name, description = "", { isPrivate = false 
   if (isPrivate) await v.page.locator("#nf-private").check()
   await v.page.locator('#new-form button[type="submit"]').click()
   await expect(v.page).toHaveURL(/#\/r\//)
-  await expect(rows(v.page)).toHaveCount(1)
+  await expect(head(v.page)).toHaveText(/@ [0-9a-f]{7}/) // the initial commit landed; the timeline is a panel, and only the one on screen is drawn
   await expect(lines(v.page)).toHaveCount(TEMPLATE_LINES)
   const [repo, branch] = decodeURIComponent(v.page.url().split("#/r/")[1]).split("/")
   return { repo, branch }

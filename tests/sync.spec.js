@@ -4,7 +4,7 @@
  * exists, signed like any other.
  */
 import { expect, test } from "@playwright/test"
-import { DEAD_RELAY, TEMPLATE_LINES, alone, assertTransport, commit, commitIds, connected, createRepo, freshRoom, go, lines, loginAs, persisted, rejoin, rows, seesLine, setLine, visitor } from "./_helpers.js"
+import { DEAD_RELAY, TEMPLATE_LINES, alone, tab, assertTransport, commit, commitIds, connected, createRepo, freshRoom, go, lines, loginAs, persisted, rejoin, rows, seesLine, setLine, visitor } from "./_helpers.js"
 
 test("a repository and a commit made alone reach a visitor once the device comes back", async ({ browser }) => {
   const room = freshRoom("offline")
@@ -15,6 +15,7 @@ test("a repository and a commit made alone reach a visitor once the device comes
   const { repo } = await createRepo(alice, "written-alone", "No peer was in sight")
   await setLine(alice, "Hello from dCode", "  <h1>Written with nobody around</h1>")
   await commit(alice, "Still alone")
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(2)
   const ids = await commitIds(alice.page)
   await persisted(alice, "Written with nobody around")
@@ -26,6 +27,7 @@ test("a repository and a commit made alone reach a visitor once the device comes
   await go(bob, "#/")
   await expect(bob.page.locator(".repos .name")).toHaveText("written-alone")
   await go(bob, `#/r/${repo}`)
+  await tab(bob, "history")
   await expect(rows(bob.page)).toHaveCount(2)
   expect(await commitIds(bob.page)).toEqual(ids)
   await expect(lines(bob.page)).toHaveCount(TEMPLATE_LINES)

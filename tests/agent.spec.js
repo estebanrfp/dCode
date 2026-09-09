@@ -49,6 +49,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await expect(alice.page.locator("#branch-select option:checked")).toHaveText("main") // no branch of the agent's: it is Alice's
   await expect(alice.page.locator("#session-addr")).toContainText("Alice")
   await expect(head(alice.page)).not.toHaveText(mainHead)
+  await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(2)
   await expect(rows(alice.page).first()).toContainText("A todo list everyone shares")
   await expect(rows(alice.page).first()).toContainText("Alice")
@@ -66,6 +67,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   expect(after.filter(([id]) => seeded.some(([sid]) => sid === id)).length).toBe(seeded.length)
   expect(after.length).toBe(seeded.length + 1)
   await expect(rows(alice.page)).toHaveCount(3) // a second commit on main, no branch anywhere
+  await tab(alice, "branches")
   await expect(branchRows(alice.page)).toHaveCount(1)
 
   // Bob asks the agent on Alice's repository: the shared buffer changes for everyone, and Bob's
@@ -81,6 +83,7 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await tab(bob, "pulls")
   await bob.page.locator('#pr-form [name="title"]').fill("From the agent, via Bob")
   await bob.page.locator('#pr-form button[type="submit"]').click()
+  await tab(alice, "pulls")
   await expect(prRows(alice.page)).toHaveCount(1)
   await expect(alice.page.locator('[data-act="merge"]')).toHaveCount(1) // Alice's to merge
   await assertTransport(bob)

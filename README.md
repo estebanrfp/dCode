@@ -18,7 +18,7 @@ Plain HTML, CSS and JavaScript. No framework, no build step, no backend — nati
 | Branch protection is a server rule | A branch is a node its owner owns: only the owner, and the addresses granted `write`, can move its head — refused on every peer otherwise |
 | A commit is trusted because the server says so | A commit's id begins with its author's address and ends with a hash of its content: nobody else can create it, rewrite it or delete it, anywhere |
 | A pull request's state is a column | Whether a proposal is merged is read from the graph by every peer: the proposed commit is an ancestor of the target's head, or it is not |
-| History is browsed | History **runs**: a project is one HTML file, so any commit opens in a sandboxed frame as it was — Preview, History, Pull requests and Branches are the tabs of the right column, Preview first and full height |
+| History is browsed | History **runs**: a project is one HTML file, so any commit opens in a sandboxed frame as it was — Preview, History, Pull requests and Branches are the tabs of the right column, Preview first and full height — and the dock draws the one you are looking at, so a diff nobody has asked for is never computed |
 | Offline is an error | A commit made with no peer in sight waits on this device's disk and lands when a path exists, signed like any other |
 | A private repository is a server setting | A private repository has a vault: one encrypted node holding its key, with an envelope per member that the owner grants and revokes. Every line and every commit is ciphertext to anyone else — on the wire, at rest, and to the authority itself |
 
