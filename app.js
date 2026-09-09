@@ -145,7 +145,17 @@ const decryptStored = async (repoId) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 export const abbr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 const DEMO_NAMES = Object.fromEntries(DEMO_IDENTITIES.map((i) => [i.address.toLowerCase(), i.name]))
-export const nameOf = (addr) => DEMO_NAMES[addr?.toLowerCase()] || abbr(addr)
+// What each identity calls itself: the `name` field of its own `user:` node,
+// which the engine ties to its key — only its subject can write it, every peer
+// recovers the signature, and the same gate refuses the write if it tries to
+// touch the role. A name nobody signed is the address, abbreviated.
+const names = new Map() // address (lowercase) → the name it signed
+export const nameOf = (addr) => names.get(addr?.toLowerCase()) || DEMO_NAMES[addr?.toLowerCase()] || abbr(addr)
+/** Your name, on your own node: `role` travels untouched or every peer refuses the write. */
+const setMyName = async (name) => {
+  const { result } = await db.get(`user:${me}`), value = result?.value ?? {}
+  await db.put({ ...value, ethAddress: me, role: value.role ?? "guest", name }, `user:${me}`)
+}
 export const short = (id) => (id ? id.split(":").pop().slice(0, 7) : "—")
 export const branchLabel = (repo, b) => (eqAddr(b.value.owner, repo.value.owner) ? b.value.name : `${nameOf(b.value.owner)}/${b.value.name}`)
 export const ago = (at) => {
@@ -354,8 +364,8 @@ const sessionPage = () => {
   const owned = repos().filter((r) => eqAddr(r.value.owner, me))
   return `<div class="page session-page"><aside class="identity"><h1>Your identity</h1>
 <p class="lede">A key pair on this device. Every commit you make is signed with it. A mnemonic recovers it anywhere; a passkey keeps the session on this browser and never types the phrase again.</p>
+<form id="name-form" class="row name-form"><label for="my-name">name</label><input id="my-name" type="text" name="name" maxlength="32" autocomplete="off" placeholder="${esc(abbr(me))}" value="${esc(names.get(me.toLowerCase()) ?? "")}"><button type="submit" class="small">Save</button></form>
 <table class="facts">
-<tr><td>name</td><td>${esc(nameOf(me))}</td></tr>
 <tr><td>address</td><td><code id="my-address">${esc(me)}</code> <button class="small" data-act="copy-address">Copy</button></td></tr>
 <tr><td>role</td><td>${eqAddr(me, AUTHORITY) ? "superadmin" : "guest"}</td></tr>
 <tr><td>unlocked by</td><td id="unlocked-by">${s.isWebAuthnProtected ? "passkey" : "mnemonic"}</td></tr>
@@ -364,6 +374,7 @@ const sessionPage = () => {
 </table>
 <div class="actions">${canProtect ? `<button class="primary" id="protect-btn">Protect this identity with a passkey</button>` : ""}<button id="signout-btn">Sign out</button></div>
 <p class="note">${!PASSKEYS_AVAILABLE ? "Passkeys need HTTPS or localhost — an IP address is never a valid Relying Party ID." : s.isWebAuthnProtected ? "Sign out and back in with the passkey: the phrase is never typed again." : s.hasVolatileIdentity ? "Until a passkey holds it, the phrase is the only way to open this identity again — here or anywhere." : "This session was opened by a passkey."}</p>
+<p class="note">A name is a label you sign: it lives on your own <code>user:</code> node, so nobody can set yours and every peer verifies who wrote it — and the same gate refuses the write if it tries to touch your role. Two identities may pick the same name; the address underneath is the one that cannot be copied. Leave it empty and you are your address again.</p>
 <p class="note status" id="login-status"></p></aside>
 <section class="activity">
   <h2>Activity</h2>
@@ -444,8 +455,9 @@ const renderNav = (page) => {
   $("nav").innerHTML = [["", "repositories"], ["new", "new"], ["constitution", "constitution"]].map(([p, label]) => `<a href="#/${p}" data-nav="${p}"${page === p ? ' class="sel"' : ""}>${label}</a>`).join("")
 }
 const renderSession = () => { // the pill: name · abbreviated address, opening the identity view; the logout icon beside the theme
-  const pill = $("session-addr"), demo = me && DEMO_IDENTITIES.find((i) => eqAddr(i.address, me))
-  pill.textContent = me ? (demo ? `${demo.name} · ${session.abbrAddr}` : session.abbrAddr ?? me) : ""
+  const pill = $("session-addr"), label = me && names.get(me.toLowerCase()) // the name you signed, else the demo's, else nothing but the address
+    || DEMO_NAMES[me?.toLowerCase()]
+  pill.textContent = me ? (label ? `${label} · ${session.abbrAddr}` : session.abbrAddr ?? me) : ""
   pill.title = me ? `${me} — your identity` : ""
   show($("logout-btn"), !!me)
 }
@@ -507,11 +519,12 @@ document.addEventListener("click", async (e) => {
   } catch (err) { toast(err.message) }
 })
 document.addEventListener("submit", async (e) => {
-  const f = e.target; if (f.id !== "new-form") return
+  const f = e.target; if (f.id !== "new-form" && f.id !== "name-form") return
   e.preventDefault()
   const field = (name) => (new FormData(f).get(name) ?? "").toString().trim()
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
+    if (f.id === "name-form") { await setMyName(field("name")); say("login-status", field("name") ? `You are ${field("name")} on every peer.` : "Your address is your name again."); return }
     const { repo } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
     location.hash = `#/r/${repo}` // its `main` is the branch you land on: the address does not have to say so
   } catch (err) { toast(err.message) }
@@ -554,6 +567,11 @@ const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).th
 await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line", "star"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
   if (value && value.type === undefined) {
+    if (id.startsWith("user:")) { // an identity's own node: what it calls itself, and nothing else this app reads
+      const addr = id.slice(5).toLowerCase()
+      if ((names.get(addr) ?? "") !== (value.name ?? "")) { value.name ? names.set(addr, value.name) : names.delete(addr); scheduleRender() }
+      return
+    }
     const repo = of("repo").find((r) => r.value.vault && id.endsWith(r.value.vault))
     if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); view?.forgetMembers(); unlock(repo.id) }
     return

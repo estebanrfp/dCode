@@ -497,6 +497,8 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .session-page .activity { padding: var(--s4) var(--s6); overflow-y: auto; min-width: 0; }
 .session-page .activity h2 { margin: 0 0 var(--s2); font-size: 18px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-primary); }
 .session-page .facts { width: 100%; }
+.name-form { margin: var(--s4) 0 var(--s3); }
+.name-form label { color: var(--text-secondary); font-size: 13px; }
 
 /* One square per day, a year of them. The scale is relative to the busiest day,
    so a quiet year still reads as a year and not as an empty grid. */

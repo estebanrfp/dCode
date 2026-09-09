@@ -119,3 +119,38 @@ test("delete my repositories, for testing: what is yours goes on every peer; a v
   await expect(alice.page).toHaveURL(new RegExp(`room=${room}`)) // the URL never changes: the room is not the user's business
   await alice.close(); await bob.close()
 })
+
+test("a name is a label you sign: it reaches every peer, and nobody can write another's", async ({ browser }) => {
+  const room = freshRoom("names")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "Alice"); await loginAs(bob, "Bob")
+  await createRepo(alice, "named", "Whose commits are these")
+
+  // Alice writes her own `user:` node. It is the one node the engine ties to her key.
+  await go(alice, "#/session")
+  await alice.page.locator('#name-form [name="name"]').fill("Ada")
+  await alice.page.locator('#name-form button[type="submit"]').click()
+  await expect(alice.page.locator("#login-status")).toContainText("Ada")
+  await expect(alice.page.locator("#session-addr")).toContainText("Ada")
+
+  // It travels: Bob reads her commit under the name she signed, not her address.
+  await go(bob, "#/")
+  await expect(bob.page.locator(".repos .by")).toHaveText("by Ada")
+
+  // A tampered client writes Bob's node with a name of Alice's choosing. Her own
+  // graph takes it — that is what a modified peer can always do to itself — and
+  // every honest peer refuses it: Bob is still Bob, on his screen and on hers.
+  await alice.page.evaluate(async (bobAddr) => {
+    try { await globalThis.db.put({ ethAddress: bobAddr, role: "guest", name: "Impostor" }, `user:${bobAddr}`) } catch {}
+  }, ADDR.bob)
+  await go(bob, "#/session")
+  await expect(bob.page.locator("#session-addr")).toContainText("Bob")
+  await expect(bob.page.locator('#name-form [name="name"]')).toHaveValue("") // nothing was written on his node
+  await expect(bob.page.locator("#session-addr")).not.toContainText("Impostor")
+
+  // And the gate holds the role: the name is the only thing that moved.
+  await go(alice, "#/session")
+  await expect(alice.page.locator("#unlocked-by")).toBeVisible()
+  await expect(alice.page.locator(".facts")).toContainText("guest")
+  await alice.close(); await bob.close()
+})
