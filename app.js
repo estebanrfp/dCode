@@ -50,7 +50,11 @@ globalThis.db = db // what the suite writes through to act as a tampered client 
 
 // ── The store: one subscription, every kind of node ─────────────────────────
 export const nodes = new Map() // id → { id, value, timestamp }
-const of = (type) => [...nodes.values()].filter((n) => n.value.type === type)
+// A set per kind beside the store. A room's lines outnumber everything else by
+// an order of magnitude, and without this every list on the index walked over
+// all of them — six times per repository drawn, on every keystroke.
+const byKind = new Map() // type → Set of ids
+const of = (type) => { const out = []; for (const id of byKind.get(type) ?? []) { const n = nodes.get(id); if (n) out.push(n) } return out }
 const byNewest = (a, b) => b.value.at - a.value.at || (a.id < b.id ? -1 : 1)
 const byOldest = (a, b) => a.value.at - b.value.at || (a.id < b.id ? -1 : 1)
 const byOrder = (a, b) => a.value.order - b.value.order || (a.id < b.id ? -1 : 1) // the engine's rule: key, then id
@@ -282,14 +286,38 @@ export const forkAndCommit = async (from, message, content) => {
 
 // ── Views ───────────────────────────────────────────────────────────────────
 let repoQuery = "", repoWho = "all", repoSort = "recent" // the filters live here; only the results are redrawn when they change
+// The search is a query, not a loop: `$text` matches per field, folding accents
+// and case, so «cafe» finds «café», and it is a SUBSCRIPTION — a repository
+// another peer creates, renames or removes while you read the results enters or
+// leaves them on its own. One live query at a time: typing replaces it, emptying
+// the box drops it. The owners whose name matches travel in the same query as an
+// `$in`, because a name lives on its identity's own node, not on the repository.
+let matching = null, searchSub = null, searchTimer = null
+const renderResults = () => { const box = $("repo-list"); if (box) box.innerHTML = repoList() }
+const searchRepos = async (q) => {
+  searchSub?.unsubscribe?.(); searchSub = null; matching = null
+  if (!q) return renderResults()
+  const owners = repos().filter((r) => nameOf(r.value.owner).toLowerCase().includes(q.toLowerCase())).map((r) => r.value.owner)
+  const found = matching = new Set()
+  // `initial` arrives one event per match: the set it describes is the `results`
+  // the call returns, so it is taken in one go and the list is drawn once. What
+  // the callback is for is everything after — the repository a peer creates,
+  // renames out of the results, or removes while you are reading them.
+  const { results, unsubscribe } = await db.map({ query: { type: "repo", $or: [{ name: { $text: q } }, { description: { $text: q } }, ...(owners.length ? [{ owner: { $in: owners } }] : [])] } },
+    ({ id, action }) => { if (matching !== found || action === "initial") return; action === "removed" ? found.delete(id) : found.add(id); renderResults() })
+  if (matching !== found) return unsubscribe() // the next keystroke got here first: this query says nothing
+  for (const n of results) found.add(n.id)
+  searchSub = { unsubscribe }
+  renderResults()
+}
 const SORTS = { recent: "Recently active", stars: "Most starred", name: "Name" }
 const WHO = { all: "All", mine: "Mine", starred: "Starred by me" }
 /** The results alone, so a keystroke or a filter costs a list and not a page. */
 const repoList = () => {
-  const q = repoQuery.trim().toLowerCase()
+  const q = repoQuery.trim()
   const at = (r) => commitsOf(r.id)[0]?.value.at ?? 0
   const shown = repos()
-    .filter((r) => !q || [r.value.name, r.value.description, nameOf(r.value.owner)].some((t) => (t ?? "").toLowerCase().includes(q)))
+    .filter((r) => !matching || matching.has(r.id))
     .filter((r) => repoWho === "all" || (repoWho === "mine" ? eqAddr(r.value.owner, me) : !!myStar(r.id)))
     .sort((a, b) => (repoSort === "stars" ? starsOf(b.id).length - starsOf(a.id).length : repoSort === "name" ? a.value.name.localeCompare(b.value.name) : at(b) - at(a)))
   const rows = shown.map((r) => {
@@ -531,7 +559,12 @@ document.addEventListener("submit", async (e) => {
 })
 
 document.addEventListener("close", (e) => { if (e.target.id === "new-modal" && location.hash.startsWith("#/new")) location.hash = "#/" }, true)
-document.addEventListener("input", (e) => { if (e.target.id === "repo-search" && $("repo-list")) { repoQuery = e.target.value; $("repo-list").innerHTML = repoList() } })
+document.addEventListener("input", (e) => { // one query per pause, not one per keystroke
+  if (e.target.id !== "repo-search" || !$("repo-list")) return
+  repoQuery = e.target.value
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => searchRepos(repoQuery.trim()), 150)
+})
 document.addEventListener("click", (e) => { // a filter marks itself and redraws the results, never the page: the search box keeps its caret
   const btn = e.target.closest("[data-who], [data-sort]"); if (!btn || !$("repo-list")) return
   if (btn.dataset.who) repoWho = btn.dataset.who; else repoSort = btn.dataset.sort
@@ -577,7 +610,9 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
     return
   }
   const known = nodes.get(id)
-  if (action === "removed") nodes.delete(id); else nodes.set(id, { id, value, timestamp })
+  const kind = (type) => byKind.get(type) ?? byKind.set(type, new Set()).get(type)
+  if (action === "removed") { nodes.delete(id); if (known) kind(known.value.type).delete(id) }
+  else { nodes.set(id, { id, value, timestamp }); kind(value.type).add(id) }
   const line = value?.type === "line" ? value : known?.value.type === "line" ? known.value : null
   const dispatchLine = () => view?.dispatchLine(id, value, action, line.branch)
   if (line) { // the buffer follows its branch's lines directly; nothing else redraws for a keystroke

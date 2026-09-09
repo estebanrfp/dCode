@@ -157,3 +157,36 @@ test("a name is a label you sign: it reaches every peer, and nobody can write an
   await expect(alice.page.locator(".facts")).toContainText("guest")
   await alice.close(); await bob.close()
 })
+
+test("the search is a query the engine answers: it folds accents, and its results stay live", async ({ browser }) => {
+  const room = freshRoom("search")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room)
+  await loginAs(alice, "Alice"); await loginAs(bob, "Bob")
+  await createRepo(alice, "morning", "Un sitio para el café de la mañana")
+  await createRepo(alice, "evening", "Nothing to do with it")
+  await go(bob, "#/")
+  await expect(bob.page.locator(".repos li")).toHaveCount(2)
+
+  // `$text` folds the accent and the case, per field: nothing in the app does this.
+  await bob.page.locator("#repo-search").fill("CAFE")
+  await expect(bob.page.locator(".repos li")).toHaveCount(1)
+  await expect(bob.page.locator(".repos .name")).toHaveText("morning")
+
+  // The query is a subscription: what Alice creates now enters Bob's results by itself.
+  await createRepo(alice, "cafeteria", "Another one")
+  await expect(bob.page.locator(".repos li")).toHaveCount(2)
+  await expect(bob.page.locator(".repos .name").first()).toHaveText("cafeteria")
+
+  // And what stops matching leaves them: Alice renames hers out of the search.
+  await go(alice, "#/")
+  await alice.page.locator(".repos .name").filter({ hasText: "cafeteria" }).click()
+  await alice.page.locator("#edit-repo").click()
+  await alice.page.locator('#repo-form [name="name"]').fill("tea-room")
+  await alice.page.locator('#repo-form [name="description"]').fill("No coffee here")
+  await alice.page.locator('#repo-form button[type="submit"]').click()
+  await expect(bob.page.locator(".repos li")).toHaveCount(1)
+
+  await bob.page.locator("#repo-search").fill("")
+  await expect(bob.page.locator(".repos li")).toHaveCount(3)
+  await alice.close(); await bob.close()
+})
