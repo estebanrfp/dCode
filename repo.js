@@ -13,12 +13,16 @@ import {
   nodes, branchesOf, commitsOf, prsOf, linesOf, commitOf, contentOf,                // the store, read
   defaultBranch, canWriteBranch, prStatus, tipsAt, isAncestor, mergeBase, at,       // what the graph says
   abbr, ago, plural, nameOf, short, branchLabel,                                    // how it reads
-  patch, commitTo, putLine, keysBetween,                                            // what it writes
-  buffer, fieldOf, domText, mountBuffer, mountVersion, unmountBuffer, runPreview, lastRun, pendingMerge, // the editor beside it
-  keyRings, unlock, unlocking,                                                      // a private repository's key
-  showTab, showView, currentBranch, render,                                         // the shell
+  patch, create, commitTo, forkAndCommit, putLine, keysBetween, seedLines,          // what it writes
+  keyRings, unlock, unlocking, newKeyHex, importKey,                                // a private repository's key
+  route, currentBranch, render, scheduleRender, pendingMerge,                       // the shell
 } from "@app"
-import { lcs, diffLines, merge3 } from "@text"
+import {
+  buffer, fieldOf, orderOf, domText, applyText, flushSaves, afterChange,            // the buffer, read and written
+  mountBuffer, mountVersion, unmountBuffer, onBufferChange, showView,               // mounting it, and the views over it
+  runPreview, lastRun,                                                              // the page it runs, beside it
+} from "@editor"
+import { diffLines, merge3 } from "@text"
 
 const lockedPage = (repo, opening) => `<div class="page locked"><h1>${esc(repo.value.name)} <span class="lock">private</span></h1><p class="lede">${esc(repo.value.description)}</p>
 <p class="lede">${opening ? "Opening the vault…" : me ? `This repository is private: its code is sealed with a key only its members hold, and ${esc(nameOf(repo.value.owner))} has not granted this identity one. Ask for access — a grant reaches this page on its own.` : `This repository is private: its code is sealed with a key only its members hold. <a href="#/login">Sign in</a> — if you are a member, it opens.`}</p></div>`
@@ -51,6 +55,20 @@ const repoSkeleton = (repo) => `<section class="repo">
     </div>
   </section>
 </div></section>`
+
+const showTab = (name) => {
+  sessionStorage.dcodeTab = name
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("sel", b.dataset.tab === name))
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${name}`))
+}
+// The project is one file, so it leaves as one file: the buffer, or any commit, as .html.
+const download = (html, name) => {
+  const a = document.createElement("a")
+  a.href = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+const fileName = (repo, suffix = "") => `${repo?.value.name ?? "index"}${suffix}.html`
 
 const renderBranches = (repo, branches, branch, commits, fromId) => {
   const counts = new Map()
@@ -190,30 +208,6 @@ const renderCommitPanel = (repo, branch, id) => {
 <pre class="diff">${shown.map((r) => `<div class="${r.kind}">${r.kind === "add" ? "+" : r.kind === "del" ? "−" : " "} ${esc(r.text)}</div>`).join("")}${rows.length > LIMIT ? `<div class="more">… ${rows.length - LIMIT} more lines</div>` : ""}</pre>`
 }
 
-/**
- * Bring a branch's buffer to `text` with the fewest writes: lines both have
- * stay (their ids, their carets); a replaced line is rewritten in place;
- * the rest are inserted between their neighbours or removed.
- */
-export const applyText = async (branchId, text) => {
-  const repo = nodes.get(branchId)?.value.repo
-  const cur = linesOf(branchId).map((n) => { const ta = fieldOf($(n.id)); return ta ? { ...n, value: { ...n.value, text: ta.value } } : n }) // a mounted line reads as the buffer shows it: a save flushed a moment ago has not reached the store yet
-  const A = cur.map((n) => n.value.text), B = text.split("\n")
-  const ops = []
-  let i = 0, j = 0
-  for (const [pi, pj] of [...lcs(A, B), [A.length, B.length]]) {
-    const gone = cur.slice(i, pi), fresh = B.slice(j, pj), reuse = Math.min(gone.length, fresh.length)
-    for (let k = 0; k < reuse; k++) if (gone[k].value.text !== fresh[k]) ops.push(putLine(repo, branchId, fresh[k], gone[k].value.order, gone[k].id)) // through putLine: a private repository's line is sealed, never spread from the store, where its text is already open
-    for (let k = reuse; k < gone.length; k++) ops.push(db.remove(gone[k].id))
-    if (fresh.length > reuse) {
-      const lo = (reuse ? gone[reuse - 1] : cur[i - 1])?.value.order, hi = cur[pi]?.value.order
-      const keys = keysBetween(lo, hi, fresh.length - reuse)
-      fresh.slice(reuse).forEach((t, k) => ops.push(putLine(repo, branchId, t, keys[k])))
-    }
-    if (pi < A.length) { i = pi + 1; j = pj + 1 } else { i = pi; j = pj }
-  }
-  await Promise.all(ops)
-}
 export const mergePR = async (pr) => {
   const repo = nodes.get(pr.value.repo), into = nodes.get(pr.value.into), from = nodes.get(pr.value.from), theirs = commitOf(pr.value.commit)
   if (!repo || !into || !from || !theirs) return toast("The pull request's branch or commit has not synced here yet.", "error")
@@ -304,3 +298,116 @@ export const renderRepo = (r, main) => {
   renderCommitPanel(repo, branch, selected)
   document.title = `${repo.value.name}${branch ? ` · ${branchLabel(repo, branch)}` : ""} · dCode`
 }
+
+// ── The repository's own gestures ───────────────────────────────────────────
+// A view owns its markup, what draws it and what is pressed on it. The shell
+// keeps the chrome; the buffer's own clicks are the editor's.
+document.addEventListener("click", async (e) => {
+  const li = e.target.closest("li[data-commit]")
+  if (li) { const r = route(); location.hash = at(r.repo, $("main").dataset.branch || currentBranch()?.id, r.commit === li.dataset.commit ? undefined : li.dataset.commit); return } // the same row again: back to the buffer
+  const a = e.target.closest("a, button"); if (!a) return
+  const act = a.dataset.act
+  try {
+    if (a.dataset.tab) { showTab(a.dataset.tab); return }
+    if (act === "revoke-member") {
+      const repo = nodes.get(route().repo); if (!repo?.value.vault) return
+      await db.sm.acls.revoke(repo.value.vault, a.dataset.address)              // the engine turns the vault's envelope key
+      const { result } = await db.sm.get(repo.value.vault), hex = newKeyHex()   // and the repository key turns: a new one on the ring
+      await db.sm.put({ ...result.value, keys: [hex, ...result.value.keys] }, repo.value.vault)
+      keyRings.set(repo.id, [await importKey(hex), ...(keyRings.get(repo.id) ?? [])])
+      toast(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`, "success")
+      forgetMembers(); renderMembers(repo); return
+    }
+    if (act === "edit-repo") {
+      const repo = nodes.get(route().repo), f = $("repo-form"); if (!repo || !f) return
+      f.elements.name.value = repo.value.name; f.elements.description.value = repo.value.description ?? ""
+      f.classList.remove("hidden"); f.elements.name.focus(); return
+    }
+    if (act === "cancel-repo") { $("repo-form")?.classList.add("hidden"); return }
+    if (act === "run") { runPreview(domText(), "the buffer"); showTab("preview"); return }
+    if (act === "download") { const b = currentBranch(); download(domText(), fileName(b && nodes.get(b.value.repo))); return }
+    if (act === "download-commit") { const c = commitOf(a.dataset.commit); if (c) download(contentOf(c.id), fileName(nodes.get(c.value.repo), `-${short(c.id)}`)); return }
+    if (act === "discard") { const b = currentBranch(); if (!b) return; pendingMerge.delete(b.id); await flushSaves(); await applyText(b.id, contentOf(b.value.head)); return }
+    if (act === "load-commit") { const b = currentBranch(), c = commitOf(a.dataset.commit); if (!b || !c) return; await flushSaves(); await applyText(b.id, contentOf(c.id)); toast(`${short(c.id)} is now the buffer of ${branchLabel(nodes.get(b.value.repo), b)}. Commit it to make it the head again.`); return }
+    if (act === "merge") { e.preventDefault(); const pr = nodes.get(a.dataset.pr); if (pr) await mergePR(pr); return }
+    if (act === "update-pr") { const pr = nodes.get(a.dataset.pr), from = nodes.get(pr?.value.from); if (pr && from) await patch(pr.id, { commit: from.value.head }); return }
+    if (act === "withdraw") { const pr = nodes.get(a.dataset.pr); if (pr) await patch(pr.id, { closed: true }); return }
+    if (act === "delete-branch") { // yours, never the default: asked twice, then the buffer's lines go and the branch node goes; the commits are history and stay
+      if (!a.dataset.armed) { a.dataset.armed = "1"; a.textContent = "Delete, really?"; setTimeout(() => { a.dataset.armed = ""; a.textContent = "Delete" }, 4000); return }
+      const b = nodes.get(a.dataset.branch); if (!b) return
+      const r = route(), standing = r.branch === b.id
+      await Promise.all(linesOf(b.id).map((n) => db.remove(n.id))); await db.remove(b.id)
+      toast(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
+      if (standing) location.hash = `#/r/${b.value.repo}`; return
+    }
+    if (act === "revoke") { const b = currentBranch(); if (b) { await db.sm.acls.revoke(b.id, a.dataset.address); toast(`Revoked ${nameOf(a.dataset.address)}.`, "success") } return }
+  } catch (err) { toast(err.message) }
+})
+document.addEventListener("submit", async (e) => {
+  const f = e.target; if (!f.id.endsWith("-form") || f.id === "new-form") return
+  e.preventDefault()
+  const field = (name) => (new FormData(f).get(name) ?? "").toString().trim()
+  if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
+  const branch = currentBranch(); if (!branch) return
+  const repo = nodes.get(branch.value.repo)
+  try {
+    if (f.id === "member-form") { // an envelope on the vault: the engine wraps the key for an address that has signed in once
+      const address = field("address")
+      await db.sm.acls.grant(repo.value.vault, address, "read")
+      f.reset(); toast(`${nameOf(address)} holds the key now; their page opens on its own.`, "success"); forgetMembers(); renderMembers(repo); return
+    }
+    if (f.id === "repo-form") { // the repository node is the owner's: a rename is one write on it
+      await patch(repo.id, { name: field("name"), description: field("description") })
+      f.classList.add("hidden"); toast("Repository updated.", "success"); scheduleRender(); return
+    }
+    if (f.id === "commit-form") {
+      const message = field("message"); if (!message) return
+      await flushSaves()
+      const content = domText()
+      if (content === contentOf(branch.value.head) && !pendingMerge.has(branch.id)) return toast("Nothing to commit: the buffer is the head.")
+      if (pendingMerge.has(branch.id) && /^(<<<<<<<|=======|>>>>>>>)/m.test(content)) return toast("Conflict markers are still in the file.", "error")
+      let id
+      if (canWriteBranch(branch)) {
+        id = await commitTo(branch, message, content, pendingMerge.get(branch.id)?.parents ?? []); pendingMerge.delete(branch.id)
+        f.reset(); toast(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`, "success"); runPreview(content, `${short(id)}, the head`); scheduleRender()
+      } else {
+        const fork = await forkAndCommit(branch, message, content)
+        f.reset(); location.hash = at(repo.id, fork.branch); toast(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
+      }
+      return
+    }
+    if (f.id === "branch-form") {
+      const head = commitOf(route().commit)?.id ?? branch.value.head
+      const id = await create({ type: "branch", repo: repo.id, name: field("name"), head })
+      await seedLines(repo.id, id, contentOf(head))
+      location.hash = at(repo.id, id); return
+    }
+    if (f.id === "pr-form") {
+      await create({ type: "pr", repo: repo.id, from: branch.id, into: field("into"), title: field("title"), commit: branch.value.head })
+      f.reset(); toast("Pull request opened. It is a node you own; the target's owner merges it.", "success"); return
+    }
+    if (f.id === "collab-form") {
+      await db.sm.acls.grant(branch.id, field("address"), "write")
+      f.reset(); toast(`${nameOf(field("address"))} can now move ${branchLabel(repo, branch)}.`); return
+    }
+  } catch (err) { toast(err.message) }
+})
+document.addEventListener("change", (e) => {
+  if (e.target.id === "branch-select") { const r = route(); location.hash = at(r.repo, e.target.value) }
+  if (e.target.id === "autorun" && e.target.checked) afterChange()
+})
+
+// The bar over the buffer is what a change to it means out here.
+onBufferChange(renderRepoBar)
+
+// The agent belongs to the editor, so it arrives with it: a model in this
+// browser that edits the buffer as you and presses this view's Commit. If it
+// does not arrive, its box simply stays hidden.
+import("@agent").then(({ mountAgent }) => mountAgent({ currentBranch, me: () => me, flushSaves, bufferLines: () => [...buffer().children].map((li) => ({ id: li.id, text: fieldOf(li).value, order: orderOf(li) })), putLine, keysBetween, remove: (id) => db.remove(id), commit: async (message) => { // the buffer repaints a frame after the writes: press Commit once it shows them
+  for (let i = 0; i < 30 && domText() === contentOf(currentBranch()?.value.head); i++) await new Promise((r) => requestAnimationFrame(r))
+  $("message").value = message; $("commit-form").requestSubmit()
+}, toast })).catch(() => {})
+
+/** The shell speaks to the view it asked for; the buffer under it is the view's own. */
+export { dispatchLine, remount, unmountBuffer } from "@editor"
+
