@@ -907,7 +907,9 @@ const sessionPage = () => {
   if (!me) return `<div class="page session-page"><h1>Your identity</h1><p class="lede">No session on this device. <a href="#/login">Sign in</a>.</p></div>`
   const s = session, canProtect = PASSKEYS_AVAILABLE && !s.isWebAuthnProtected && s.hasVolatileIdentity
   const yn = (v) => `<span class="${v ? "yes" : "no"}">${v ? "yes" : "no"}</span>`
-  return `<div class="page session-page"><h1>Your identity</h1>
+  const mine = of("commit").filter((c) => eqAddr(c.value.owner, me))
+  const owned = repos().filter((r) => eqAddr(r.value.owner, me))
+  return `<div class="page session-page"><aside class="identity"><h1>Your identity</h1>
 <p class="lede">A key pair on this device. Every commit you make is signed with it. A mnemonic recovers it anywhere; a passkey keeps the session on this browser and never types the phrase again.</p>
 <table class="facts">
 <tr><td>name</td><td>${esc(nameOf(me))}</td></tr>
@@ -919,7 +921,25 @@ const sessionPage = () => {
 </table>
 <div class="actions">${canProtect ? `<button class="primary" id="protect-btn">Protect this identity with a passkey</button>` : ""}<button id="signout-btn">Sign out</button></div>
 <p class="note">${!PASSKEYS_AVAILABLE ? "Passkeys need HTTPS or localhost — an IP address is never a valid Relying Party ID." : s.isWebAuthnProtected ? "Sign out and back in with the passkey: the phrase is never typed again." : s.hasVolatileIdentity ? "Until a passkey holds it, the phrase is the only way to open this identity again — here or anywhere." : "This session was opened by a passkey."}</p>
-<p class="note status" id="login-status"></p></div>`
+<p class="note status" id="login-status"></p></aside>
+<section class="activity">
+  <h2>Activity</h2>
+  <p class="lede">Every commit you have signed, from the graph on this device. Nothing was collected to draw it: the timestamps are the ones the commits carry.</p>
+  <div id="calendar" class="calendar-slot"></div>
+  <dl class="tallies">
+    <div><dt>commits signed</dt><dd>${mine.length}</dd></div>
+    <div><dt>repositories owned</dt><dd>${owned.length}</dd></div>
+    <div><dt>stars given</dt><dd>${of("star").filter((n) => eqAddr(n.value.owner, me)).length}</dd></div>
+    <div><dt>branches of yours</dt><dd>${of("branch").filter((b) => eqAddr(b.value.owner, me)).length}</dd></div>
+  </dl>
+</section></div>`
+}
+/** The calendar arrives on demand: only this page asks for it, and only when it is open. */
+const paintActivity = async () => {
+  const slot = $("calendar"); if (!slot || !me) return
+  const { activityCalendar } = await import("./activity.js")
+  if ($("calendar") !== slot) return // navigated away while the module loaded
+  slot.innerHTML = activityCalendar(of("commit").filter((c) => eqAddr(c.value.owner, me)).map((c) => c.value.at))
 }
 const lockedPage = (repo, opening) => `<div class="page locked"><h1>${esc(repo.value.name)} <span class="lock">private</span></h1><p class="lede">${esc(repo.value.description)}</p>
 <p class="lede">${opening ? "Opening the vault…" : me ? `This repository is private: its code is sealed with a key only its members hold, and ${esc(nameOf(repo.value.owner))} has not granted this identity one. Ask for access — a grant reaches this page on its own.` : `This repository is private: its code is sealed with a key only its members hold. <a href="#/login">Sign in</a> — if you are a member, it opens.`}</p></div>`
@@ -1146,6 +1166,7 @@ const render = () => {
   const page = r.page === "login" || r.page === "new" ? "" : r.page // login and new are dialogs over the index, not pages of their own
   const titles = { "": "dCode", new: "New repository · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
   main.innerHTML = { "": reposPage, session: sessionPage, constitution: constitutionPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  if (page === "session") paintActivity()
   // No session yet: the index stands, and the dialog opens by itself the moment
   // the session callback brings one — never a redirect out from under the route.
   document.title = titles[page] ?? "dCode"

@@ -43,6 +43,10 @@ Optional, and yours. The prompt box sits at the bottom right of every repository
 
 Nothing leaves the machine: the weights (`Qwen2.5-Coder`, 7B by default, 3B and 1.5B when the GPU is smaller; `?model=<id>` to choose) are downloaded once from the model hub and cached by the browser, and the prompt is not sent anywhere. What the model knows is in [agent-prompt.md](agent-prompt.md) — the rules of a single-file GenosDB application, the exact API it may use and a complete example to follow — plus GenosDB's own [summary for models](https://cdn.jsdelivr.net/gh/estebanrfp/gdb@main/llms.txt), fetched fresh on each first use so the agent follows the engine; and whatever the model does with the rules, the skeleton is enforced as the file lands: a module script, the CDN import, the room named after the brief. Edit the prompt file to change how it builds. It needs a browser with WebGPU: Chrome, Edge or Safari 26.
 
+## The files
+
+`index.html` is the shell, `app.js` the application, `styles.css` its tokens and rules, `constitution.js` the rules the room runs under. Two modules are loaded only when something asks for them: `agent.js`, when a repository is open, and `activity.js`, when the identity page is, so a visitor reading the index downloads neither.
+
 ## Testing
 
 The door offers **Reset: wipe this device (testing)** under the identities: `db.clear()` and nothing else, so this device's copy of the graph goes and the page shows it empty at once. It is not a reset of the room and cannot be — every other peer still holds what it holds and hands it back on the next connection — but what lived only here does go with it, which is how a graph from an older shape of the app, or operations nobody accepts any more, leave a device.

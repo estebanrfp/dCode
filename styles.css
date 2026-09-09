@@ -489,6 +489,36 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .form-modal .lede { margin: 0 0 var(--s4); color: var(--text-secondary); font-size: 13px; }
 .form-modal .actions { display: flex; justify-content: flex-end; gap: var(--s2); }
 
-/* The identity fills the window, and reads in columns rather than one long table. */
-.session-page { max-width: none; margin: 0; padding: var(--s4) var(--s6); overflow-y: auto; flex: 1; min-height: 0; }
-.session-page .facts { width: auto; }
+/* The identity is a panel too: what this device holds on the left, what this
+   identity has done on the right. */
+.session-page { max-width: none; margin: 0; display: grid; grid-template-columns: 320px 1fr; gap: 0; flex: 1; min-height: 0; align-items: stretch; }
+.session-page .identity { padding: var(--s4); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); overflow-y: auto; }
+.session-page .identity h1 { margin: 0 0 var(--s2); font-size: 18px; }
+.session-page .activity { padding: var(--s4) var(--s6); overflow-y: auto; min-width: 0; }
+.session-page .activity h2 { margin: 0 0 var(--s2); font-size: 18px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-primary); }
+.session-page .facts { width: 100%; }
+
+/* One square per day, a year of them. The scale is relative to the busiest day,
+   so a quiet year still reads as a year and not as an empty grid. */
+.calendar-slot { min-height: 140px; }
+.cal-total { margin: 0 0 var(--s2); color: var(--text-secondary); font-size: 13px; }
+.cal-months { display: grid; grid-template-columns: repeat(53, 13px); gap: 0 3px; margin-left: 34px; color: var(--text-tertiary); font-size: 10px; }
+.cal-body { display: flex; gap: var(--s2); }
+.cal-weekdays { display: grid; grid-template-rows: repeat(7, 13px); gap: 3px; width: 26px; color: var(--text-tertiary); font-size: 10px; }
+.cal-weekdays span:nth-child(1) { grid-row: 2; }
+.cal-weekdays span:nth-child(2) { grid-row: 4; }
+.cal-weekdays span:nth-child(3) { grid-row: 6; }
+.cal-grid { display: grid; grid-template-rows: repeat(7, 13px); grid-auto-flow: column; grid-auto-columns: 13px; gap: 3px; }
+.cal-day { width: 13px; height: 13px; border-radius: 3px; background: var(--bg-tertiary); }
+.cal-day.l1 { background: color-mix(in srgb, var(--ok) 30%, var(--bg-tertiary)); }
+.cal-day.l2 { background: color-mix(in srgb, var(--ok) 55%, var(--bg-tertiary)); }
+.cal-day.l3 { background: color-mix(in srgb, var(--ok) 78%, var(--bg-tertiary)); }
+.cal-day.l4 { background: var(--ok); }
+.cal-day.future { opacity: .25; }
+.cal-legend { display: flex; align-items: center; gap: 3px; margin: var(--s3) 0 0; color: var(--text-tertiary); font-size: 11px; }
+.cal-legend .cal-day { margin: 0 1px; }
+.tallies { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s3); margin: var(--s5) 0 0; }
+.tallies div { padding: var(--s3); border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-secondary); }
+.tallies dt { color: var(--text-tertiary); font-size: 12px; }
+.tallies dd { margin: 4px 0 0; font: 600 20px var(--mono); color: var(--text-primary); }
+@media (max-width: 860px) { .session-page { grid-template-columns: 1fr; } .session-page .identity { border-right: none; border-bottom: 1px solid var(--border-subtle); } }

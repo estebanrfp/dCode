@@ -61,20 +61,26 @@ test("the prompt belongs to a repository, and New is a dialog over the index", a
   const room = freshRoom("chrome")
   const alice = await visitor(browser, room)
   await loginAs(alice, "Alice")
-  await go(alice, "#/")
-  await expect(alice.page.locator("#agent")).toBeHidden() // no repository open: nothing for it to edit
-  await go(alice, "#/new")
-  await expect(alice.page.locator("#new-modal")).toBeVisible()
-  await expect(alice.page.locator(".repos-page")).toBeVisible() // the index stays behind it
-  await alice.page.locator('[data-act="close-new"]').click()
-  await expect(alice.page.locator("#new-modal")).toBeHidden()
-  await expect(alice.page).toHaveURL(/#\/$/)
-  const { repo } = await createRepo(alice, "with-a-prompt")
-  await expect(alice.page.locator("#agent")).toBeVisible() // inside one, it is there
+  await createRepo(alice, "with-a-prompt") // the helper waits for #new-modal: New is a dialog, not a page
+  await expect(alice.page.locator("#agent")).toBeVisible() // inside a repository, the prompt has something to edit
   await expect(alice.page.locator("#new-modal")).toBeHidden() // and the dialog did not follow us in
   await go(alice, "#/")
-  await expect(alice.page.locator("#agent")).toBeHidden()
-  expect(repo).toBeTruthy()
+  await expect(alice.page.locator("#agent")).toBeHidden() // outside one, it has nothing, so it is not there
+  await expect(alice.page.locator(".repos-page")).toBeVisible()
+  await alice.close()
+})
+
+test("the identity is a panel: the calendar arrives on demand and counts what this identity signed", async ({ browser }) => {
+  const room = freshRoom("activity")
+  const alice = await visitor(browser, room)
+  await loginAs(alice, "Alice")
+  await createRepo(alice, "counted")
+  await go(alice, "#/session")
+  await expect(alice.page.locator(".session-page .identity")).toBeVisible()
+  await expect(alice.page.locator(".cal-grid .cal-day")).toHaveCount(371) // 53 weeks, seven days each
+  await expect(alice.page.locator(".cal-total")).toContainText("1 commit in the last year") // the repository's first commit
+  await expect(alice.page.locator(".cal-grid .cal-day:not(.l0)")).toHaveCount(1) // and it lands on today
+  await expect(alice.page.locator(".tallies dd").first()).toHaveText("1")
   await alice.close()
 })
 

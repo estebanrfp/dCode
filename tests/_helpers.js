@@ -112,6 +112,7 @@ export const replaceAll = async (v, text) => {
 /** Create a repository through the form; returns its id and its main branch's id from the URL. */
 export const createRepo = async (v, name, description = "", { isPrivate = false } = {}) => {
   await go(v, "#/new")
+  await expect(v.page.locator("#new-modal")).toBeVisible() // it is a dialog now: wait for it to be open before typing into it
   await v.page.locator('#new-form [name="name"]').fill(name)
   await v.page.locator('#new-form [name="description"]').fill(description)
   if (isPrivate) await v.page.locator("#nf-private").check()
