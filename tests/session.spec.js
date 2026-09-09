@@ -128,10 +128,13 @@ test("a name is a label you sign: it reaches every peer, and nobody can write an
 
   // Alice writes her own `user:` node. It is the one node the engine ties to her key.
   await go(alice, "#/session")
+  await expect(alice.page.locator('#name-form [name="name"]')).toHaveValue("Alice") // the name in force arrives in the field: a demo identity comes named by the constitution
   await alice.page.locator('#name-form [name="name"]').fill("Ada")
   await alice.page.locator('#name-form button[type="submit"]').click()
-  await expect(alice.page.locator("#login-status")).toContainText("Ada")
   await expect(alice.page.locator("#session-addr")).toContainText("Ada")
+  // The write comes back through the subscription and redraws the page: the
+  // outcome is in the toast stack, which lives outside it, so it is still there.
+  await expect(alice.page.locator("#toasts .toast").last()).toContainText("You are Ada on every peer")
 
   // It travels: Bob reads her commit under the name she signed, not her address.
   await go(bob, "#/")
@@ -145,7 +148,7 @@ test("a name is a label you sign: it reaches every peer, and nobody can write an
   }, ADDR.bob)
   await go(bob, "#/session")
   await expect(bob.page.locator("#session-addr")).toContainText("Bob")
-  await expect(bob.page.locator('#name-form [name="name"]')).toHaveValue("") // nothing was written on his node
+  await expect(bob.page.locator('#name-form [name="name"]')).toHaveValue("Bob") // his own node, untouched: the name the constitution gave him
   await expect(bob.page.locator("#session-addr")).not.toContainText("Impostor")
 
   // And the gate holds the role: the name is the only thing that moved.

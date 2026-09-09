@@ -364,7 +364,7 @@ const sessionPage = () => {
   const owned = repos().filter((r) => eqAddr(r.value.owner, me))
   return `<div class="page session-page"><aside class="identity"><h1>Your identity</h1>
 <p class="lede">A key pair on this device. Every commit you make is signed with it. A mnemonic recovers it anywhere; a passkey keeps the session on this browser and never types the phrase again.</p>
-<form id="name-form" class="row name-form"><label for="my-name">name</label><input id="my-name" type="text" name="name" maxlength="32" autocomplete="off" placeholder="${esc(abbr(me))}" value="${esc(names.get(me.toLowerCase()) ?? "")}"><button type="submit" class="small">Save</button></form>
+<form id="name-form" class="row name-form"><label for="my-name">name</label><input id="my-name" type="text" name="name" maxlength="32" autocomplete="off" placeholder="${esc(abbr(me))}" value="${esc(names.get(me.toLowerCase()) ?? DEMO_NAMES[me.toLowerCase()] ?? "")}"><button type="submit" class="small">Save</button></form>
 <table class="facts">
 <tr><td>address</td><td><code id="my-address">${esc(me)}</code> <button class="small" data-act="copy-address">Copy</button></td></tr>
 <tr><td>role</td><td>${eqAddr(me, AUTHORITY) ? "superadmin" : "guest"}</td></tr>
@@ -374,7 +374,7 @@ const sessionPage = () => {
 </table>
 <div class="actions">${canProtect ? `<button class="primary" id="protect-btn">Protect this identity with a passkey</button>` : ""}<button id="signout-btn">Sign out</button></div>
 <p class="note">${!PASSKEYS_AVAILABLE ? "Passkeys need HTTPS or localhost — an IP address is never a valid Relying Party ID." : s.isWebAuthnProtected ? "Sign out and back in with the passkey: the phrase is never typed again." : s.hasVolatileIdentity ? "Until a passkey holds it, the phrase is the only way to open this identity again — here or anywhere." : "This session was opened by a passkey."}</p>
-<p class="note">A name is a label you sign: it lives on your own <code>user:</code> node, so nobody can set yours and every peer verifies who wrote it — and the same gate refuses the write if it tries to touch your role. Two identities may pick the same name; the address underneath is the one that cannot be copied. Leave it empty and you are your address again.</p>
+<p class="note">A name is a label you sign: it lives on your own <code>user:</code> node, so nobody can set yours and every peer verifies who wrote it — and the same gate refuses the write if it tries to touch your role. Two identities may pick the same name; the address underneath is the one that cannot be copied. Leave it empty and you are your address again. A demo identity arrives named by the constitution, which is the app talking, not a signature — save it and the name becomes yours, signed like any other write.</p>
 <p class="note status" id="login-status"></p></aside>
 <section class="activity">
   <h2>Activity</h2>
@@ -524,7 +524,7 @@ document.addEventListener("submit", async (e) => {
   const field = (name) => (new FormData(f).get(name) ?? "").toString().trim()
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
-    if (f.id === "name-form") { await setMyName(field("name")); say("login-status", field("name") ? `You are ${field("name")} on every peer.` : "Your address is your name again."); return }
+    if (f.id === "name-form") { await setMyName(field("name")); toast(field("name") ? `You are ${field("name")} on every peer.` : "Your address is your name again.", "success"); return }
     const { repo } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
     location.hash = `#/r/${repo}` // its `main` is the branch you land on: the address does not have to say so
   } catch (err) { toast(err.message) }
