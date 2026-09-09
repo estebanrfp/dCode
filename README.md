@@ -6,7 +6,7 @@ A shared code editor and a code host in one page, for projects that are **one HT
 
 ![dCode with two peers: on the left the shared buffer with line numbers and syntax colours, Bob's named caret on line 15, the HTML · CSS · JS views above it; on the right the page running as it is typed, and under it the History tab with the commit graph and the diff of the selected commit.](https://cdn.jsdelivr.net/gh/estebanrfp/gdb@main/assets/dcode-editor.png)
 
-Plain HTML, CSS and JavaScript. No framework, no build step, no backend. Four files.
+Plain HTML, CSS and JavaScript. No framework, no build step, no backend — native modules, which the browser fetches as the page needs them.
 
 ## What is different from a code host
 
@@ -45,7 +45,9 @@ Nothing leaves the machine: the weights (`Qwen2.5-Coder`, 7B by default, 3B and 
 
 ## The files
 
-`index.html` is the shell, `app.js` the application, `styles.css` its tokens and rules, `constitution.js` the rules the room runs under. Two modules are loaded only when something asks for them: `agent.js`, when a repository is open, and `activity.js`, when the identity page is, so a visitor reading the index downloads neither.
+`index.html` is the shell, and the import map in its head is the whole build step: one line per module with the version they share, so a publish can never leave a visitor running today's markup against a module the browser still had cached. `app.js` is the application — the database, the store a single subscription feeds, the shared buffer, the router and the session. `styles.css` holds the tokens and the rules, `constitution.js` the rules the room runs under, and `text.js` the diff and the three-way merge over lines: pure functions, no DOM and no database, which is why they can be read on their own.
+
+Three modules are fetched only when something asks for them, so a visitor reading the index downloads none of them: **`repo.js`**, the repository view — the page's skeleton, the four panels of the dock, the timeline, the diff and the merges — with `agent.js` beside it, when a repository is opened; and `activity.js`, when the identity page is. The direction of the dependency is what keeps it honest: a view speaks the application's own vocabulary and imports it from `app.js`, and `app.js` never imports a view — the router asks for one.
 
 ## Testing
 
@@ -88,7 +90,7 @@ pnpm install
 pnpm test
 ```
 
-Playwright, one `BrowserContext` per simulated visitor (own storage, own identity), a fresh room per test, real WebRTC between them. Fourteen tests in seven files:
+Playwright, one `BrowserContext` per simulated visitor (own storage, own identity), a fresh room per test, real WebRTC between them. Nineteen tests in seven files:
 
 - `tests/repo.spec.js` — a repository and its buffer crossing to another visitor line for line, an edit landing live, the commit under the same ids, the head and an older version running in the frame, the diff, the download of the buffer and of an older version, the owner renaming the repository in place; the views as filters over one file — HTML the markup with the two blocks folded to their tag lines, CSS the `<style>` block, JS the `<script>` block, with the file's line numbers — an edit in a view landing as the same node, the code coloured; the buffer as the block editor: two people on two lines at once, Enter splitting a node and Backspace merging it back on both peers, Discard returning everyone to the head. Whole lines: Shift+↓ selecting a range, copy joining its text, Backspace removing the nodes on both peers with the caret landing on the line that followed, the line numbers selecting another range with a Shift+click, a paste replacing it with the first node kept and the rest gone everywhere, Escape letting go.
 - `tests/branches.spec.js` — a fork with a copy of the buffer, a pull request, a proposal brought up to date and a fast-forward merge that the target's buffer follows; a tampered client that writes another's branch head and is refused by every receiver, proved against a later write that lands; a collaborator granted `write` who moves the head directly, and is back to forking once revoked. A branch you own deleted, asked twice, its lines gone on both peers and the owner back on main; main and other people's branches offer no such button.
