@@ -845,7 +845,7 @@ const repoList = () => {
 <div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
 <button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me ? "" : "disabled"}>★ ${stars}</button></div>
 <p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
-<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
+<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch", "branches")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
   })
   return `<p class="results-count">${plural(shown.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
 ${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches." : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`}`
@@ -865,14 +865,16 @@ const reposPage = () => `<div class="page repos-page">
   <p class="lede">Single-file HTML projects — HTML, CSS and JavaScript in one editor — with branches, forks and pull requests. The editor is shared line by line, live; every commit is a node its author owns and a page you can run; nothing here is hosted by anyone.</p>
   <div id="repo-list">${repoList()}</div>
 </section></div>`
-const newPage = () => (me
-  ? `<div class="page"><h1>New repository</h1><p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit. Replace the page from there: everyone on the branch edits it live, and every commit of it runs.</p>
-<form id="new-form" class="formtable"><label for="nf-name">name</label><input id="nf-name" type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" placeholder="my-project">
+/** New repository: a dialog over the index, because it is a form and not a place. */
+const newDialog = () => (me ? `<form id="new-form" class="formtable" method="dialog">
+<h2>New repository</h2>
+<p class="lede">A repository is a node you own: a name and a description. It opens in the editor with a starter page in its shared buffer — HTML, CSS and JavaScript in one file — on its <code>main</code> branch, as its first commit.</p>
+<label for="nf-name">name</label><input id="nf-name" type="text" name="name" maxlength="60" pattern="[A-Za-z0-9._\\-]{1,60}" required autocomplete="off" placeholder="my-project">
 <label for="nf-desc">description</label><input id="nf-desc" type="text" name="description" maxlength="160" autocomplete="off" placeholder="What it is, in a line">
 <label class="check"><input type="checkbox" name="private" id="nf-private"> Private — the code is sealed with a key only the members you grant can hold; the name, the branches and the pull request titles stay visible</label>
-<div class="actions"><button type="submit" class="primary">Create repository and open the editor</button></div>
-<p class="note">The first commit will be signed by ${esc(nameOf(me))} (${esc(me)}). Nobody else can move <code>main</code> until you grant them write.</p></form></div>`
-  : `<div class="page"><h1>New repository</h1><p class="lede"><a href="#/login">Sign in</a> to create a repository.</p></div>`)
+<div class="actions"><button type="button" class="ghost" data-act="close-new">Cancel</button><button type="submit" class="primary">Create repository and open the editor</button></div>
+<p class="note">The first commit will be signed by ${esc(nameOf(me))} (${esc(me)}). Nobody else can move <code>main</code> until you grant them write.</p></form>`
+  : `<div class="signed-out"><h2>New repository</h2><p class="lede">A repository is a node you own, so it needs an identity. <a href="#/login">Sign in</a> and it opens here.</p><div class="actions"><button type="button" class="ghost" data-act="close-new">Close</button></div></div>`)
 // ── The identity door (design guide §4.1), rendered from the security state ──
 // One textarea does both jobs, every button is derived from the state on each
 // call, nothing here remembers anything — the SM reports several times while
@@ -1130,12 +1132,22 @@ const render = () => {
   if (typing()) { dirtyWhileTyping = true; return }
   const r = route(), main = $("main")
   renderNav(r.page); renderSession()
+  // Decided before anything returns: a dialog left open would swallow every click
+  // behind it. It opens whether or not the session has arrived — without one it
+  // says so — and its contents are rewritten only when that changes.
+  const wantNew = r.page === "new", modal = $("new-modal")
+  if (wantNew && modal.dataset.me !== (me ?? "")) { modal.dataset.me = me ?? ""; modal.innerHTML = newDialog(); $("nf-name")?.focus() }
+  if (wantNew && !modal.open) { modal.showModal(); $("nf-name")?.focus() }
+  if (!wantNew && modal.open) { modal.close(); modal.dataset.me = "-" }
   if (r.page === "r" && r.repo) return renderRepo(r, main)
-  main.dataset.repo = ""; main.classList.remove("full"); current = null
+  main.dataset.repo = ""; current = null
+  main.classList.toggle("full", ["", "login", "new", "session"].includes(r.page)) // the index and the identity fill the window, like the repository view
   if (r.page === "login" && !me && !door.open) door.showModal() // a contextual "Sign in" re-opens the door; the page behind it stays
-  const page = r.page === "login" ? "" : r.page
+  const page = r.page === "login" || r.page === "new" ? "" : r.page // login and new are dialogs over the index, not pages of their own
   const titles = { "": "dCode", new: "New repository · dCode", session: "Your identity · dCode", constitution: "Constitution · dCode" }
-  main.innerHTML = { "": reposPage, new: newPage, session: sessionPage, constitution: constitutionPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  main.innerHTML = { "": reposPage, session: sessionPage, constitution: constitutionPage }[page]?.() ?? `<div class="page"><p class="muted">No such page.</p></div>`
+  // No session yet: the index stands, and the dialog opens by itself the moment
+  // the session callback brings one — never a redirect out from under the route.
   document.title = titles[page] ?? "dCode"
 }
 const renderRepo = (r, main) => {
@@ -1261,6 +1273,7 @@ document.addEventListener("click", async (e) => {
       toast(`Deleted ${branchLabel(nodes.get(b.value.repo), b)}. Its commits stay in the timeline.`)
       if (standing) location.hash = `#/r/${b.value.repo}`; return
     }
+    if (act === "close-new") { location.hash = "#/"; return }
     if (act === "star") {
       if (!me) return toast("Sign in to star a repository.", "error")
       const mine = myStar(a.dataset.repo)
@@ -1365,6 +1378,7 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "branch-select") { const r = route(); location.hash = at(r.repo, e.target.value) }
   if (e.target.id === "autorun" && e.target.checked) afterChange()
 })
+document.addEventListener("close", (e) => { if (e.target.id === "new-modal" && location.hash.startsWith("#/new")) location.hash = "#/" }, true)
 document.addEventListener("input", (e) => { if (e.target.id === "repo-search" && $("repo-list")) { repoQuery = e.target.value; $("repo-list").innerHTML = repoList() } })
 document.addEventListener("click", (e) => { // a filter marks itself and redraws the results, never the page: the search box keeps its caret
   const btn = e.target.closest("[data-who], [data-sort]"); if (!btn || !$("repo-list")) return

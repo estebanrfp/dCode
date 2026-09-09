@@ -211,10 +211,11 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 /* Repositories */
 .page { width: 100%; max-width: 880px; margin: 0 auto; }
 .page .lede { color: var(--text-secondary); max-width: 72ch; }
-.repos { list-style: none; margin: var(--s2) 0 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-secondary); }
-.repos li { display: block; padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border-subtle); }
-.repos li:last-child { border-bottom: none; }
-.repos li:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+/* Cards, not one block: each repository is its own thing, and they fill the width. */
+.repos { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s3); margin: var(--s2) 0 0; padding: 0; }
+.repos li { display: flex; flex-direction: column; padding: var(--s4); border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-secondary); }
+.repos li:hover { border-color: var(--border-strong); background: var(--bg-tertiary); }
+.repos li .repo-meta { margin-top: auto; padding-top: var(--s3); }
 .repos .name { font: 600 15px var(--mono); }
 .repos .desc { margin: var(--s1) 0 0; color: var(--text-secondary); }
 .repo-head { display: flex; align-items: center; gap: var(--s2); }
@@ -228,8 +229,10 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .star:disabled { opacity: .5; cursor: default; }
 /* The index is a panel like the repository view: what narrows the list on the
    left, what the list says on the right. */
-.repos-page { display: grid; grid-template-columns: 240px 1fr; gap: var(--s6); align-items: start; }
-.repos-page .filters { display: flex; flex-direction: column; gap: var(--s2); position: sticky; top: var(--s4); }
+.repos-page { max-width: none; margin: 0; display: grid; grid-template-columns: 260px 1fr; gap: 0; align-items: stretch; flex: 1; min-height: 0; }
+.repos-page .filters { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s4); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); overflow-y: auto; }
+.repos-page .results { padding: var(--s4) var(--s6); overflow-y: auto; min-width: 0; }
+.repos-page .results .lede { max-width: 88ch; }
 .repos-page .filters h2 { margin: var(--s3) 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); }
 .repos-page .results h1 { margin: 0; }
 .filter-group { display: flex; flex-wrap: wrap; gap: var(--s1); }
@@ -239,7 +242,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .chip-btn:disabled { opacity: .45; cursor: default; }
 .new-repo { margin-top: var(--s3); text-align: center; text-decoration: none; }
 .results-count { margin: var(--s4) 0 0; color: var(--text-tertiary); font-size: 12px; }
-@media (max-width: 720px) { .repos-page { grid-template-columns: 1fr; } .repos-page .filters { position: static; } }
+@media (max-width: 720px) { .repos-page { grid-template-columns: 1fr; } .repos-page .filters { border-right: none; border-bottom: 1px solid var(--border-subtle); } }
 .repo-search { flex: none; width: 100%; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font: 13px inherit; }
 .repo-search:focus-visible { outline: none; border-color: var(--accent); }
 .btn { display: block; padding: 6px 12px; text-decoration: none; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font-size: 13px; text-decoration: none; }
@@ -464,6 +467,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .agent-go { flex: none; width: 30px; height: 30px; border: none; border-radius: 6px; background: var(--accent); color: var(--text-on-accent); font-size: 12px; cursor: pointer; }
 .agent-go:hover { background: var(--accent-hover); }
 .agent-status { position: absolute; right: 0; bottom: calc(100% + var(--s1)); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.4 var(--mono); color: var(--text-secondary); }
+.agent[hidden] { display: none; } /* the prompt belongs to a repository: [hidden] must beat the flex above */
 @media (max-width: 720px) { .footer { flex-wrap: wrap; } .agent { width: 100%; } }
 
 /* Testing, on the home page: small and quiet, under the list. */
@@ -478,3 +482,13 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 /* A version from the timeline, in the editor: the same code, none of it yours to type in. */
 .buffer[data-readonly] textarea { cursor: default; }
 .buffer[data-readonly] .ln { color: var(--text-tertiary); opacity: .7; }
+
+/* A form that is a dialog, not a page: the index stays behind it. */
+.form-modal { width: min(560px, calc(100vw - var(--s6))); padding: var(--s6); text-align: left; }
+.form-modal h2 { margin: 0 0 var(--s2); font-size: 18px; }
+.form-modal .lede { margin: 0 0 var(--s4); color: var(--text-secondary); font-size: 13px; }
+.form-modal .actions { display: flex; justify-content: flex-end; gap: var(--s2); }
+
+/* The identity fills the window, and reads in columns rather than one long table. */
+.session-page { max-width: none; margin: 0; padding: var(--s4) var(--s6); overflow-y: auto; flex: 1; min-height: 0; }
+.session-page .facts { width: auto; }

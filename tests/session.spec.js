@@ -57,6 +57,27 @@ test("the theme toggle cycles system → light → dark and the choice survives 
   await v.close()
 })
 
+test("the prompt belongs to a repository, and New is a dialog over the index", async ({ browser }) => {
+  const room = freshRoom("chrome")
+  const alice = await visitor(browser, room)
+  await loginAs(alice, "Alice")
+  await go(alice, "#/")
+  await expect(alice.page.locator("#agent")).toBeHidden() // no repository open: nothing for it to edit
+  await go(alice, "#/new")
+  await expect(alice.page.locator("#new-modal")).toBeVisible()
+  await expect(alice.page.locator(".repos-page")).toBeVisible() // the index stays behind it
+  await alice.page.locator('[data-act="close-new"]').click()
+  await expect(alice.page.locator("#new-modal")).toBeHidden()
+  await expect(alice.page).toHaveURL(/#\/$/)
+  const { repo } = await createRepo(alice, "with-a-prompt")
+  await expect(alice.page.locator("#agent")).toBeVisible() // inside one, it is there
+  await expect(alice.page.locator("#new-modal")).toBeHidden() // and the dialog did not follow us in
+  await go(alice, "#/")
+  await expect(alice.page.locator("#agent")).toBeHidden()
+  expect(repo).toBeTruthy()
+  await alice.close()
+})
+
 test("a star is a node its author owns: it crosses, it counts once per person, and taking it back removes it", async ({ browser }) => {
   const room = freshRoom("stars")
   const alice = await visitor(browser, room), bob = await visitor(browser, room)
