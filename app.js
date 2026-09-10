@@ -294,33 +294,69 @@ let repoQuery = "", repoWho = "all", repoSort = "recent" // the filters live her
 // `$in`, because a name lives on its identity's own node, not on the repository.
 let matching = null, searchSub = null, searchTimer = null
 const renderResults = () => { const box = $("repo-list"); if (box) box.innerHTML = repoList() }
+/** What the room is being asked for: every repository, or the ones a search matches. */
+const repoWhere = (q) => {
+  if (!q) return { type: "repo" }
+  const owners = repos().filter((r) => nameOf(r.value.owner).toLowerCase().includes(q.toLowerCase())).map((r) => r.value.owner)
+  return { type: "repo", $or: [{ name: { $text: q } }, { description: { $text: q } }, ...(owners.length ? [{ owner: { $in: owners } }] : [])] }
+}
 const searchRepos = async (q) => {
   searchSub?.unsubscribe?.(); searchSub = null; matching = null
+  if (repoSort === "new") newestPage()
   if (!q) return renderResults()
-  const owners = repos().filter((r) => nameOf(r.value.owner).toLowerCase().includes(q.toLowerCase())).map((r) => r.value.owner)
   const found = matching = new Set()
   // `initial` arrives one event per match: the set it describes is the `results`
   // the call returns, so it is taken in one go and the list is drawn once. What
   // the callback is for is everything after — the repository a peer creates,
   // renames out of the results, or removes while you are reading them.
-  const { results, unsubscribe } = await db.map({ query: { type: "repo", $or: [{ name: { $text: q } }, { description: { $text: q } }, ...(owners.length ? [{ owner: { $in: owners } }] : [])] } },
+  const { results, unsubscribe } = await db.map({ query: repoWhere(q) },
     ({ id, action }) => { if (matching !== found || action === "initial") return; action === "removed" ? found.delete(id) : found.add(id); renderResults() })
   if (matching !== found) return unsubscribe() // the next keystroke got here first: this query says nothing
   for (const n of results) found.add(n.id)
   searchSub = { unsubscribe }
   renderResults()
 }
-const SORTS = { recent: "Recently active", stars: "Most starred", name: "Name" }
+const SORTS = { recent: "Recently active", new: "Newest", stars: "Most starred", name: "Name" }
+// A room only grows, so the list is a window and the window grows as you reach
+// the end of the column — examples/infinite-scroll.html, where it earns its keep.
+// Under «Newest» the pages are the ENGINE'S: `field` and `order` make the cursor
+// deterministic between peers (without them `$after` walks each peer's own
+// insertion order), `$limit` is the page, and the next one is asked for by the id
+// of the last row. The other three orders are the application's own — the newest
+// commit's time and a count of stars live on other nodes, and the engine cannot
+// order by what it cannot compute — so there the window is a slice of the store.
+const PAGE = 24
+let shown = PAGE, newest = [], newestMore = false, loadingPage = false
+const newestPage = async (more = false) => {
+  if (loadingPage) return
+  loadingPage = true
+  const limit = more ? PAGE : Math.max(newest.length, PAGE)
+  const { results } = await db.map({ query: repoWhere(repoQuery.trim()), field: "at", order: "desc", $limit: limit, ...(more && newest.length ? { $after: newest.at(-1) } : {}) })
+  newest = more ? [...newest, ...results.map((n) => n.id)] : results.map((n) => n.id)
+  newestMore = results.length === limit
+  loadingPage = false
+  renderResults()
+}
+/** The end of the column asks for the next page — of the engine's order, or of the app's. */
+const moreRepos = () => {
+  if (repoSort === "new") return newestMore && newestPage(true)
+  if (shown < repos().length) { shown += PAGE; renderResults() }
+}
+document.addEventListener("scroll", (e) => { // scroll does not bubble: the column is caught on the way down
+  const col = e.target
+  if (col?.classList?.contains("results") && col.scrollTop + col.clientHeight >= col.scrollHeight - 240) moreRepos()
+}, true)
 const WHO = { all: "All", mine: "Mine", starred: "Starred by me" }
 /** The results alone, so a keystroke or a filter costs a list and not a page. */
 const repoList = () => {
   const q = repoQuery.trim()
   const at = (r) => commitsOf(r.id)[0]?.value.at ?? 0
-  const shown = repos()
-    .filter((r) => !matching || matching.has(r.id))
-    .filter((r) => repoWho === "all" || (repoWho === "mine" ? eqAddr(r.value.owner, me) : !!myStar(r.id)))
-    .sort((a, b) => (repoSort === "stars" ? starsOf(b.id).length - starsOf(a.id).length : repoSort === "name" ? a.value.name.localeCompare(b.value.name) : at(b) - at(a)))
-  const rows = shown.map((r) => {
+  const mine = (r) => repoWho === "all" || (repoWho === "mine" ? eqAddr(r.value.owner, me) : !!myStar(r.id))
+  const all = repos().filter((r) => !matching || matching.has(r.id)).filter(mine)
+  const page = repoSort === "new"
+    ? newest.map((id) => nodes.get(id)).filter((n) => n && mine(n)) // the engine's window, in the engine's order
+    : all.sort((a, b) => (repoSort === "stars" ? starsOf(b.id).length - starsOf(a.id).length : repoSort === "name" ? a.value.name.localeCompare(b.value.name) : at(b) - at(a))).slice(0, shown)
+  const rows = page.map((r) => {
     const branches = branchesOf(r.id), stars = starsOf(r.id).length, forks = forksOf(r, branches), last = commitsOf(r.id)[0]
     return `<li>
 <div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
@@ -328,8 +364,10 @@ const repoList = () => {
 <p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
 <p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch", "branches")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
   })
-  return `<p class="results-count">${plural(shown.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
-${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches." : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`}`
+  const more = repoSort === "new" ? newestMore : page.length < all.length
+  return `<p class="results-count">${plural(all.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
+${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches." : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`}
+${more ? `<p class="results-more">${page.length} of ${all.length} — keep scrolling</p>` : ""}`
 }
 const reposPage = () => `<div class="page repos-page">
 <aside class="filters">
@@ -568,6 +606,9 @@ document.addEventListener("input", (e) => { // one query per pause, not one per 
 document.addEventListener("click", (e) => { // a filter marks itself and redraws the results, never the page: the search box keeps its caret
   const btn = e.target.closest("[data-who], [data-sort]"); if (!btn || !$("repo-list")) return
   if (btn.dataset.who) repoWho = btn.dataset.who; else repoSort = btn.dataset.sort
+  shown = PAGE
+  $("repo-list")?.closest(".results")?.scrollTo(0, 0) // another order is another list: read it from its top, or its end asks for a page at once
+  if (repoSort === "new") newestPage() // the engine owns this order: ask it for the first page
   for (const other of btn.parentElement.children) other.classList.toggle("on", other === btn)
   $("repo-list").innerHTML = repoList()
 })
@@ -629,6 +670,8 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
     if (cached !== undefined) value.content = cached
     else inOrder(id, async () => { const text = await unseal(value.repo, value.ct); if (text !== null) { value.content = text; scheduleRender() } })
   }
+  // The engine's window is a page it handed over: when the set under it changes, ask again.
+  if (repoSort === "new" && (value?.type === "repo" || known?.value.type === "repo")) newestPage()
   scheduleRender()
 })
 subscribed = true

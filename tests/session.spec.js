@@ -190,3 +190,29 @@ test("the search is a query the engine answers: it folds accents, and its result
   await expect(bob.page.locator(".repos li")).toHaveCount(3)
   await alice.close(); await bob.close()
 })
+
+test("the list is a window that grows at the end of the column, and «Newest» is the engine's own order, paged with its cursor", async ({ browser }) => {
+  const room = freshRoom("window")
+  const alice = await visitor(browser, room)
+  await loginAs(alice, "Alice")
+  // Twenty-six repositories, written as the app writes them, so the list is longer than a page.
+  await alice.page.evaluate(async () => {
+    for (let i = 0; i < 26; i++)
+      await globalThis.db.sm.acls.set({ type: "repo", name: `project-${String(i).padStart(2, "0")}`, description: `Number ${i}`, at: Date.now() + i })
+  })
+  await go(alice, "#/")
+  const cards = alice.page.locator(".repos li"), column = alice.page.locator(".repos-page .results")
+  await expect(cards).toHaveCount(24)                                     // a page of the list, not the whole room
+  await expect(alice.page.locator(".results-count")).toContainText("26 repositories") // which says what the room holds
+  await column.evaluate((el) => el.scrollTo(0, el.scrollHeight))
+  await expect(cards).toHaveCount(26)                                     // the end of the column asked for the rest
+
+  // Under «Newest» the pages are the engine's: its order, and its cursor for the next one.
+  await alice.page.locator('[data-sort="new"]').click()
+  await expect(cards).toHaveCount(24)
+  await expect(alice.page.locator(".repos .name").first()).toHaveText("project-25")
+  await column.evaluate((el) => el.scrollTo(0, el.scrollHeight))
+  await expect(cards).toHaveCount(26)
+  await expect(alice.page.locator(".repos .name").last()).toHaveText("project-00") // the second page, after the cursor
+  await alice.close()
+})

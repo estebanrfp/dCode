@@ -242,6 +242,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .chip-btn:disabled { opacity: .45; cursor: default; }
 .new-repo { margin-top: var(--s3); text-align: center; text-decoration: none; }
 .results-count { margin: var(--s4) 0 0; color: var(--text-tertiary); font-size: 12px; }
+.results-more { margin: var(--s4) 0 var(--s6); color: var(--text-tertiary); font-size: 12px; text-align: center; }
 @media (max-width: 720px) { .repos-page { grid-template-columns: 1fr; } .repos-page .filters { border-right: none; border-bottom: 1px solid var(--border-subtle); } }
 .repo-search { flex: none; width: 100%; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-primary); font: 13px inherit; }
 .repo-search:focus-visible { outline: none; border-color: var(--accent); }
