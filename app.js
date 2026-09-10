@@ -11,7 +11,7 @@
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
 import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js"
-import { CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "@constitution"
+import { ALICE, BOB, CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "@constitution"
 
 export const $ = (id) => document.getElementById(id)
 export const eqAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
@@ -560,6 +560,7 @@ document.addEventListener("click", async (e) => {
       a.disabled = false; a.dataset.armed = ""; a.textContent = "Delete my repositories"; scheduleRender(); return
     }
     if (a.id === "logout-btn" || a.id === "signout-btn") { e.preventDefault(); return db.sm.clearSecurity() }
+    if (a.id === "seed-btn") { e.preventDefault(); await seedExamples(a); return }
     if (a.id === "reset-btn") { // testing, in the door: this device's copy of the graph, gone. It is not a reset of the room and cannot be —
       // every other peer still holds what it holds and hands back whatever it has on the next connection. What lived only here does go,
       // which is what makes it worth a button: a graph from an older shape of the app, or ops nobody accepts any more, leave with it.
@@ -614,6 +615,36 @@ document.addEventListener("click", (e) => { // a filter marks itself and redraws
 })
 document.addEventListener("focusout", () => { if (dirtyWhileTyping) { dirtyWhileTyping = false; scheduleRender() } })
 addEventListener("hashchange", () => { if (!document.activeElement?.closest(".line")) document.activeElement?.blur(); render() })
+
+// ── Fifty projects, written from this browser ───────────────────────────────
+// A room with nobody in it is empty, and that is the whole point of the model —
+// so the door offers to fill this one. Sixteen kinds of small page over fifty
+// subjects: landings, forms, to-do lists, boards, price lists, questions, a
+// timer, a quiz, notes, a bill split, a chart, photographs, a menu, a week, a
+// shelf and a waiting list. They are real repositories, made the way the New
+// form makes them — a node per line, an initial commit signed by Alice or by
+// Bob, nothing hosted by anyone. The pages arrive with the module and only when
+// this is pressed. Pressing it twice writes nothing twice: a name already in the
+// room is left alone.
+const seedExamples = async (button) => {
+  button.disabled = true
+  try {
+    const { examples } = await import("@examples")
+    const all = examples()
+    toast(`Writing ${all.length} projects into this room. Watch them arrive.`)
+    const started = Date.now()
+    for (const [i, project] of all.entries()) {
+      const who = i < Math.ceil(all.length * 0.7) ? ALICE : BOB // two owners, so a fork has somewhere to come from
+      if (!eqAddr(me, who.address)) await db.sm.loginOrRecoverUserWithMnemonic(who.mnemonic)
+      if (!repos().some((r) => r.value.name === project.name)) await newRepo(project.name, project.description, project.html)
+      // Every project is a node and fifty lines of signed writes: give the frame
+      // back between them, so the room is seen filling instead of the page freezing.
+      await new Promise((paint) => setTimeout(paint))
+      if ((i + 1) % 40 === 0) toast(`${i + 1} of ${all.length} written…`)
+    }
+    toast(`${all.length} projects are in this room in ${Math.round((Date.now() - started) / 1000)}s, signed by ${ALICE.name} and ${BOB.name}. They live on whoever holds them — you, now.`, "success")
+  } catch (err) { toast(err.message, "error") } finally { button.disabled = false }
+}
 
 // ── Session: the callback is the single source of truth ─────────────────────
 let lastMe = null

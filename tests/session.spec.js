@@ -216,3 +216,21 @@ test("the list is a window that grows at the end of the column, and «Newest» i
   await expect(alice.page.locator(".repos .name").last()).toHaveText("project-00") // the second page, after the cursor
   await alice.close()
 })
+
+test("the door fills the room: the example projects are written from this browser, as anyone writes them", async ({ browser }) => {
+  const room = freshRoom("seed")
+  const alice = await visitor(browser, room)
+  await alice.page.locator("#identity-modal[open]").waitFor()
+  await alice.page.locator("#seed-btn").click()
+  // It signs itself in — the door closes the moment a session starts — and the room fills.
+  await expect(alice.page.locator("#session-addr")).toContainText(/Alice|Bob/)
+  await expect(alice.page.locator(".repos li").first()).toBeVisible({ timeout: 60_000 })
+  await expect(alice.page.locator("#toasts")).toContainText(/projects are in this room/, { timeout: 120_000 })
+  await expect(alice.page.locator(".results-count")).toContainText("200 repositories")
+  await expect(alice.page.locator(".repos li")).toHaveCount(24) // a page of them: the list is a window
+  // What it wrote is what the New form writes: a repository with its file in the buffer.
+  await alice.page.locator(".repos .name").first().click()
+  await expect(alice.page.locator("#buffer .line").first()).toBeVisible({ timeout: 30_000 })
+  await expect(alice.page.locator("#head-label")).toHaveText(/@ [0-9a-f]{7}/)
+  await alice.close()
+})
