@@ -97,54 +97,30 @@ export const at = (repoId, branchId, commitId) => {
   return `#/r/${repoId}${branchId && !implied ? `/${branchId}` : ""}${commitId ? `/${commitId}` : ""}`
 }
 
-// ── Private repositories: the engine keeps the key, the app seals the code ──
-// A private repository has a vault: one encrypted node (`db.sm.put`) holding
-// its key ring, newest key first. The owner grants `read` on that one node to
-// each member — a key envelope per reader, wrapped and rotated by the engine —
-// and every line and every commit of the repository is sealed with the current
-// key before it is written as an ordinary node. Members open it on arrival;
-// everyone else syncs ciphertext. Revoking a member turns both keys: the
-// vault's, by the engine, and the repository's, a new one on the ring, so
-// what is written afterwards is unreadable to them.
+// ── Private repositories: the key ring is here, the vault is a module ───────
+// What a private repository is, and how its key travels, is `vault.js` — the
+// crypto and the vault's protocol, which a room with nothing sealed in it
+// never downloads. What stays here is the ring itself, because "is this repo
+// sealed for me?" is asked synchronously all over the application, and three
+// doors into the module, so no caller anywhere has to know it is lazy.
 export const keyRings = new Map()  // repo id → CryptoKey[] newest first · null = asked, no envelope · absent = not asked yet
 export const unlocking = new Set() // repositories whose vault is being fetched
 const plain = new Map()     // commit id → content, for a sealed commit this session wrote
-const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s) }
-const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
-export const newKeyHex = () => [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("")
-export const importKey = (hex) => crypto.subtle.importKey("raw", Uint8Array.from(hex.match(/../g), (h) => parseInt(h, 16)), "AES-GCM", false, ["encrypt", "decrypt"])
+let vault = null, vaultLoading = null
+/** The vault module, the first time something sealed turns up. `null` if it could not be fetched. */
+const useVault = () => vault ?? (vaultLoading ??= import("@vault").then((m) => (vault = m),
+  () => { vaultLoading = null; toast("The vault did not arrive. A private repository stays sealed until it does.", "error"); return null }))
 export const seal = async (repo, text) => {
-  const key = keyRings.get(repo)?.[0]; if (!key) throw new Error("No key for this repository on this device")
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  return `${b64(iv)}.${b64(new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text))))}`
+  const v = await useVault(); if (!v) throw new Error("The vault is not here: nothing is written unsealed") // a write that cannot be sealed is not made
+  return v.seal(repo, text)
 }
-export const unseal = async (repo, sealed) => {
-  const [iv, ct] = sealed.split(".").map(unb64)
-  for (const key of keyRings.get(repo) ?? []) { try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct)) } catch {} }
-  return null
-}
-/** Fetch the vault: with an envelope the ring opens; without one the repository stays sealed for this identity. */
-export const unlock = async (repoId) => {
-  const repo = nodes.get(repoId); if (!repo?.value.vault || !me || unlocking.has(repoId)) return false
-  unlocking.add(repoId)
-  try {
-    const { result } = await db.sm.get(repo.value.vault).catch(() => ({ result: null }))
-    if (!result?.decrypted || !Array.isArray(result.value.keys)) { keyRings.set(repoId, null); return false }
-    keyRings.set(repoId, await Promise.all(result.value.keys.map(importKey)))
-    await decryptStored(repoId)
-    return true
-  } finally { unlocking.delete(repoId); scheduleRender() }
-}
-/** Open every sealed line and commit of the repository already in the store, then redraw. */
-const decryptStored = async (repoId) => {
-  for (const n of [...nodes.values()]) {
-    if (n.value.repo !== repoId || n.value.ct === undefined) continue
-    const text = await unseal(repoId, n.value.ct)
-    if (text === null) continue
-    if (n.value.type === "line") n.value.text = text; else if (n.value.type === "commit") n.value.content = text
-  }
-  view?.remount(repoId) // the buffer on screen, if it is this repository's, now has text to show
-}
+// With no key on the ring the answer is already null, so a visitor who is not a
+// member never fetches the module: the sealed line they cannot read asks for
+// nothing, and `unlock` is what brings the vault the moment a key is asked for.
+export const unseal = async (repo, sealed) => (keyRings.get(repo)?.length ? (await useVault())?.unseal(repo, sealed) : null) ?? null
+export const unlock = async (repoId) => (await useVault())?.unlock(repoId) ?? false
+/** The vault's way back to the buffer on screen, if the buffer is that repository's. */
+export const remountBuffer = (repoId) => view?.remount(repoId)
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 export const abbr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
@@ -256,12 +232,7 @@ export const putLine = async (repo, branch, text, order, id) =>
 export const seedLines = (repo, branch, content) => Promise.all(content.split("\n").map((text, i) => putLine(repo, branch, text, i + 1)))
 const newRepo = async (name, description, content, isPrivate) => {
   const repo = await create({ type: "repo", name, description })
-  if (isPrivate) { // the vault: one encrypted node with this session's envelope on it, and the first key on the ring
-    const hex = newKeyHex()
-    const vault = await db.sm.put({ type: "vault", repo, keys: [hex] })
-    keyRings.set(repo, [await importKey(hex)])
-    await patch(repo, { vault })
-  }
+  if (isPrivate) await patch(repo, { vault: await (await import("@vault")).createVault(repo) }) // one encrypted node with this session's envelope on it, and the first key on the ring
   const branch = await create({ type: "branch", repo, name: "main", head: null })
   await seedLines(repo, branch, content)
   const head = await newCommit({ repo, branch, parents: [], message: "Initial commit", content })

@@ -14,7 +14,7 @@ import {
   defaultBranch, canWriteBranch, prStatus, tipsAt, isAncestor, mergeBase, at,       // what the graph says
   abbr, ago, plural, nameOf, short, branchLabel,                                    // how it reads
   patch, create, commitTo, forkAndCommit, putLine, keysBetween, seedLines,          // what it writes
-  keyRings, unlock, unlocking, newKeyHex, importKey,                                // a private repository's key
+  keyRings, unlock, unlocking,                                                      // a private repository's key
   route, currentBranch, render, scheduleRender, pendingMerge,                       // the shell
 } from "@app"
 import {
@@ -320,9 +320,7 @@ document.addEventListener("click", async (e) => {
     if (act === "revoke-member") {
       const repo = nodes.get(route().repo); if (!repo?.value.vault) return
       await db.sm.acls.revoke(repo.value.vault, a.dataset.address)              // the engine turns the vault's envelope key
-      const { result } = await db.sm.get(repo.value.vault), hex = newKeyHex()   // and the repository key turns: a new one on the ring
-      await db.sm.put({ ...result.value, keys: [hex, ...result.value.keys] }, repo.value.vault)
-      keyRings.set(repo.id, [await importKey(hex), ...(keyRings.get(repo.id) ?? [])])
+      await (await import("@vault")).turnKey(repo)                             // and the repository's turns too: a new one at the head of the ring
       toast(`${nameOf(a.dataset.address)} no longer holds the key. What is written from now on is sealed with a new one.`, "success")
       forgetMembers(); renderMembers(repo); return
     }
