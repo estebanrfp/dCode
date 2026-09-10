@@ -283,6 +283,14 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .repo-bar select { padding: 3px 6px; font: 12px var(--mono); }
 .repo-bar .head { font-family: var(--mono); color: var(--text-tertiary); }
 .repo-bar .dirty { color: var(--warn); }
+/* Presence: the windows that have this repository open right now. One rule for
+   the index's cards and for the bar, because one function paints both. Each dot
+   carries its peer's own hue in `--peer` — the colour that peer's caret paints
+   in the code — and the plain one at the end is you. */
+.here { display: inline-flex; align-items: center; gap: 3px; color: var(--text-tertiary); white-space: nowrap; }
+.here:empty { display: none; }
+.here .dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--peer, 140) 75% 70%); }
+.here .dot.you { background: var(--text-tertiary); }
 .repo-bar .commit-form { display: flex; gap: var(--s2); align-items: center; margin-left: auto; }
 .repo-bar .commit-form input { width: 280px; max-width: 40vw; }
 .repo-bar .whose { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }

@@ -362,7 +362,7 @@ const repoList = () => {
 <div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
 <button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me ? "" : "disabled"}>★ ${stars}</button></div>
 <p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
-<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch", "branches")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}</p></li>`
+<p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch", "branches")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}<span class="here" data-here="${esc(r.id)}"></span></p></li>`
   })
   const more = repoSort === "new" ? newestMore : page.length < all.length
   return `<p class="results-count">${plural(all.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
@@ -497,7 +497,7 @@ export const render = () => {
   if (!subscribed) return
   if (typing()) { dirtyWhileTyping = true; return }
   const r = route(), main = $("main")
-  renderNav(r.page); renderSession()
+  renderNav(r.page); renderSession(); whereAmI(r)
   // Decided before anything returns: a dialog left open would swallow every click
   // behind it. It opens whether or not the session has arrived — without one it
   // says so — and its contents are rewritten only when that changes.
@@ -505,7 +505,7 @@ export const render = () => {
   if (wantNew && modal.dataset.me !== (me ?? "")) { modal.dataset.me = me ?? ""; modal.innerHTML = newDialog(); $("nf-name")?.focus() }
   if (wantNew && !modal.open) { modal.showModal(); $("nf-name")?.focus() }
   if (!wantNew && modal.open) { modal.close(); modal.dataset.me = "-" }
-  if (r.page === "r" && r.repo) return view ? view.renderRepo(r, main) : void loadView()
+  if (r.page === "r" && r.repo) { view ? view.renderRepo(r, main) : loadView(); return paintHere() }
   main.dataset.repo = ""; view?.unmountBuffer()
   main.classList.toggle("full", ["", "login", "new", "session"].includes(r.page)) // the index and the identity fill the window, like the repository view
   if (r.page === "login" && !me && !door.open) door.showModal() // a contextual "Sign in" re-opens the door; the page behind it stays
@@ -516,6 +516,7 @@ export const render = () => {
   // No session yet: the index stands, and the dialog opens by itself the moment
   // the session callback brings one — never a redirect out from under the route.
   document.title = titles[page] ?? "dCode"
+  paintHere()
 }
 const renderNav = (page) => {
   $("nav").innerHTML = [["", "repositories"], ["new", "new"], ["constitution", "constitution"]].map(([p, label]) => `<a href="#/${p}" data-nav="${p}"${page === p ? ' class="sel"' : ""}>${label}</a>`).join("")
@@ -707,10 +708,41 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
 })
 subscribed = true
 
-// ── Presence, in the footer, as on every GenosDB page ───────────────────────
+// ── Presence: how many are in the room, and what each one is looking at ─────
+// The footer's count is the engine's own truth — the connections open right
+// now. WHERE each one is, is the application's, and it rides the SAME ephemeral
+// channel as the carets: a window says where it is when that changes, hands it
+// to a peer that arrives, and a peer that leaves takes it with it. Nothing here
+// is written to the graph and nothing here is signed — a channel message
+// carries no signature, so this counts windows and names nobody.
 const presence = () => { const n = Object.keys(db.room?.getPeers() ?? {}).length; $("presence").textContent = `${n} peer${n === 1 ? "" : "s"}` }
-db.room?.on("peer:join", presence)
-db.room?.on("peer:leave", presence) // the carets are the editor's business, and it listens for them itself
+export const wire = db.room?.channel("presence") // one ephemeral channel for the whole app: `where` is the shell's, `caret` and `text` are the editor's
+export const hueOf = (id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) // a peer's colour, so the dot in the bar is the caret in the code
+const peerWhere = new Map() // peerId → the repository that window has open
+let myWhere = null
+/** Every "N here" on screen, from the one map: the index's cards and the repository's bar. */
+const paintHere = () => {
+  for (const el of document.querySelectorAll("[data-here]")) {
+    const there = [...peerWhere].filter(([, repo]) => repo === el.dataset.here).map(([peer]) => peer)
+    const mine = myWhere === el.dataset.here, n = there.length + (mine ? 1 : 0)
+    el.innerHTML = n ? `${there.map((p) => `<i class="dot" style="--peer:${hueOf(p)}"></i>`).join("")}${mine ? `<i class="dot you" title="You"></i>` : ""}${n} here` : ""
+  }
+}
+/** Where this window is: the route says it, and only a move is worth a message. */
+const whereAmI = (r) => {
+  const now = r.page === "r" && r.repo ? r.repo : null
+  if (now === myWhere) return
+  myWhere = now
+  wire?.send({ kind: "where", repo: now })
+}
+wire?.on("message", (msg, from) => {
+  if (msg?.kind !== "where") return // the carets are the editor's, and it reads them itself
+  msg.repo ? peerWhere.set(from, msg.repo) : peerWhere.delete(from)
+  paintHere()
+})
+db.room?.on("peer:join", (peerId) => { presence(); if (myWhere) wire.send({ kind: "where", repo: myWhere }, peerId) }) // one arrival, one message, to the one who arrived
+db.room?.on("peer:leave", (peerId) => { presence(); peerWhere.delete(peerId); paintHere() })
+db.room?.on("peer:lost", (peerId) => { peerWhere.delete(peerId); paintHere() }) // the goodbye a closing tab broadcasts: the departure itself
 presence()
 
 // The first paint, last of all: it may already be a repository, and that is

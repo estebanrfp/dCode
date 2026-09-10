@@ -14,6 +14,7 @@ import {
   $, esc, me, db, nodes, route,            // the words the whole app uses
   putLine, keysBetween, keyBetween, linesOf, // a line is a node: this is how one is written
   keyRings, seal, unseal,                  // a private repository's lines travel sealed, keystrokes included
+  wire, hueOf,                             // the room's ephemeral channel, and a peer's colour: both are the shell's
   plural,                                  // how it reads
 } from "@app"
 import { lcs } from "@text"
@@ -448,14 +449,13 @@ document.addEventListener("keydown", (e) => {
   else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) setAllSelected(false)
 })
 
-// ── Awareness + live typing: ONE ephemeral channel, two kinds ───────────────
+// ── Awareness + live typing: the room's ONE ephemeral channel, two kinds ────
 // Channel traffic never touches the database. 'caret' carries where you are;
 // 'text' carries the line you are typing, keystroke by keystroke, so the room
 // sees each character the moment it lands — the debounced put remains the
-// truth that persists and repairs.
-const presenceChannel = db.room.channel("presence")
+// truth that persists and repairs. The channel is the shell's, and so is the
+// colour: the dot beside a repository's name is this caret, in the code.
 const peerAt = new Map() // peerId -> { block, start, end }
-const hueOf = (id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
 const colorOf = (id) => `hsl(${hueOf(id)} 75% 70%)`
 function renderMarks() {
   document.querySelectorAll(".mirror").forEach((m) => m.remove())
@@ -485,14 +485,15 @@ function announce() {
     lastSent = msg
     if (msg.kind === "text" && keyRings.get(li.dataset.repo)) { // a private repository's keystrokes travel sealed too
       const { text, ...rest } = msg
-      seal(li.dataset.repo, text).then((ct) => presenceChannel.send({ ...rest, ct }))
+      seal(li.dataset.repo, text).then((ct) => wire.send({ ...rest, ct }))
       return
     }
-    presenceChannel.send(msg)
+    wire.send(msg)
   })
 }
 document.addEventListener("selectionchange", announce)
-presenceChannel.on("message", async (msg, fromPeerId) => {
+wire.on("message", async (msg, fromPeerId) => {
+  if (msg.kind === "where") return // which repository a window has open is the shell's business
   if (msg.kind === "text") {
     const li = $(msg.block), ta = fieldOf(li)
     const text = msg.ct !== undefined ? (ta ? await unseal(li.dataset.repo, msg.ct) : null) : msg.text
@@ -504,7 +505,7 @@ presenceChannel.on("message", async (msg, fromPeerId) => {
 let leftBursts = 0
 setInterval(() => { // after the caret leaves the buffer, "left" is repeated twice, then silence
   if (document.activeElement?.closest?.(".line")) { leftBursts = 0; return }
-  if (lastSent && leftBursts < 2) { leftBursts++; presenceChannel.send({ kind: "caret", block: null }) }
+  if (lastSent && leftBursts < 2) { leftBursts++; wire.send({ kind: "caret", block: null }) }
 }, 2000)
 // The views are filters over the one file: CSS shows the lines inside <style>,
 // JS the lines inside <script>, HTML everything — the same nodes, the file's
@@ -529,5 +530,5 @@ document.addEventListener("click", async (e) => {
 })
 // The room, as the carets need it: a late joiner learns where this one is, and
 // one that leaves takes its mark with it. The peer count is the shell's.
-db.room?.on("peer:join", (peerId) => { if (lastSent?.block) presenceChannel.send(lastSent, peerId) })
+db.room?.on("peer:join", (peerId) => { if (lastSent?.block) wire.send(lastSent, peerId) })
 db.room?.on("peer:leave", (peerId) => { peerAt.delete(peerId); renderMarks() })
