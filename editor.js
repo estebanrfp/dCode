@@ -11,7 +11,7 @@
 // it from `app.js`, and it knows nothing of the page around it — what a change
 // means out there is a function whoever mounts it hands over.
 import {
-  $, esc, me, db, nodes, route,            // the words the whole app uses
+  $, esc, me, db, nodes, route, roleOf,    // the words the whole app uses
   putLine, keysBetween, keyBetween, linesOf, // a line is a node: this is how one is written
   keyRings, seal, unseal,                  // a private repository's lines travel sealed, keystrokes included
   wire, hueOf,                             // the room's ephemeral channel, and a peer's colour: both are the shell's
@@ -160,7 +160,7 @@ function createLine(id, { repo, branch, text, order }) {
   const cell = document.createElement("div"); cell.className = "cell"
   const hl = document.createElement("pre"); hl.className = "hl"; hl.setAttribute("aria-hidden", "true")
   const ta = document.createElement("textarea")
-  ta.rows = 1; ta.wrap = "off"; ta.spellcheck = false; ta.value = text; known.set(id, text)
+  ta.rows = 1; ta.wrap = "off"; ta.spellcheck = false; ta.readOnly = !!buffer().dataset.readonly; ta.value = text; known.set(id, text) // a version, or a restricted session: the line arrives read-only
   ta.setAttribute("aria-label", "Line")
 
   ta.addEventListener("input", () => {
@@ -344,7 +344,7 @@ export function mountVersion(repo, text) {
 /** A repository's lines opened just now: if its buffer is the one on screen, mount it again. */
 export const remount = (repoId) => { if (current?.repo === repoId) mountBuffer(current.repo, current.branch) }
 export function mountBuffer(repo, branch) {
-  delete buffer().dataset.readonly
+  roleOf(me) === "restricted" ? (buffer().dataset.readonly = "restricted") : delete buffer().dataset.readonly // a restricted identity reads the buffer; nothing here writes for it
   current = { repo, branch }
   buffer().replaceChildren()
   for (const n of linesOf(branch)) if (n.value.text !== undefined) createLine(n.id, n.value) // a sealed line waits for its key

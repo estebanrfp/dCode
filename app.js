@@ -131,6 +131,8 @@ const DEMO_NAMES = Object.fromEntries(DEMO_IDENTITIES.map((i) => [i.address.toLo
 // touch the role. A name nobody signed is the address, abbreviated.
 const names = new Map() // address (lowercase) → the name it signed
 export const nameOf = (addr) => names.get(addr?.toLowerCase()) || DEMO_NAMES[addr?.toLowerCase()] || abbr(addr)
+const roles = new Map() // address (lowercase) → the role on its own node, which only the authority's signature sets
+export const roleOf = (addr) => (eqAddr(addr, AUTHORITY) ? "superadmin" : roles.get(addr?.toLowerCase()) ?? "guest")
 /** Your name, on your own node: `role` travels untouched or every peer refuses the write. */
 const setMyName = async (name) => {
   const { result } = await db.get(`user:${me}`), value = result?.value ?? {}
@@ -331,7 +333,7 @@ const repoList = () => {
     const branches = branchesOf(r.id), stars = starsOf(r.id).length, forks = forksOf(r, branches), last = commitsOf(r.id)[0]
     return `<li>
 <div class="repo-head"><a class="name" href="#/r/${esc(r.id)}">${esc(r.value.name)}</a>${r.value.vault ? `<span class="lock" title="Private: the code is sealed for its members">private</span>` : ""}
-<button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me ? "" : "disabled"}>★ ${stars}</button></div>
+<button class="star${myStar(r.id) ? " on" : ""}" data-act="star" data-repo="${esc(r.id)}" title="${myStar(r.id) ? "Starred — click to take it back" : "Star this repository"}" ${me && roleOf(me) !== "restricted" ? "" : "disabled"}>★ ${stars}</button></div>
 <p class="desc">${esc(r.value.description) || `<span class="dim">no description</span>`}</p>
 <p class="repo-meta"><span title="Branches">⑂ ${plural(branches.length, "branch", "branches")}</span>${forks ? `<span title="People with a branch of their own here">${plural(forks, "fork")}</span>` : ""}<span title="Commits">${plural(commitsOf(r.id).length, "commit")}</span><span class="by">by ${esc(nameOf(r.value.owner))}</span>${last ? `<span class="when">${ago(last.value.at)}</span>` : ""}<span class="here" data-here="${esc(r.id)}"></span></p></li>`
   })
@@ -406,7 +408,7 @@ const sessionPage = () => {
 <form id="name-form" class="row name-form"><label for="my-name">name</label><input id="my-name" type="text" name="name" maxlength="32" autocomplete="off" placeholder="${esc(abbr(me))}" value="${esc(names.get(me.toLowerCase()) ?? DEMO_NAMES[me.toLowerCase()] ?? "")}"><button type="submit" class="small">Save</button></form>
 <table class="facts">
 <tr><td>address</td><td><code id="my-address">${esc(me)}</code> <button class="small" data-act="copy-address">Copy</button></td></tr>
-<tr><td>role</td><td>${eqAddr(me, AUTHORITY) ? "superadmin" : "guest"}</td></tr>
+<tr><td>role</td><td id="my-role">${esc(roleOf(me))}</td></tr>
 <tr><td>unlocked by</td><td id="unlocked-by">${s.isWebAuthnProtected ? "passkey" : "mnemonic"}</td></tr>
 <tr><td>protected by a passkey</td><td>${yn(s.isWebAuthnProtected)}</td></tr>
 <tr><td>passkey on this browser</td><td>${yn(s.hasWebAuthnHardwareRegistration)}</td></tr>
@@ -440,7 +442,9 @@ const constitutionPage = () => `<div class="page constitution">
 <h2>Roles — enforced by the engine on every peer</h2><table>${Object.entries(CONSTITUTION.roles).map(([k, v]) => `<tr><td>${esc(k)}</td><td><code>${esc(JSON.stringify(v))}</code><br><span class="rule">${esc(CONSTITUTION.roleText[k] ?? "")}</span></td></tr>`).join("")}</table>
 <h2>What ownership means here</h2><table>${CONSTITUTION.principles.map(([t, text]) => `<tr><td>${esc(t)}</td><td><span class="rule">${esc(text)}</span></td></tr>`).join("")}</table>
 <h2>Amendment</h2><p>${esc(CONSTITUTION.amendment)} <a href="https://github.com/estebanrfp/dCode/blob/main/constitution.js">The file.</a></p>
-${me ? `<h2>You, under it</h2><p>${esc(nameOf(me))} · <code>${esc(me)}</code> · role <b>${eqAddr(me, AUTHORITY) ? "superadmin" : "guest"}</b></p>` : ""}</div>`
+${me ? `<h2>You, under it</h2><p>${esc(nameOf(me))} · <code>${esc(me)}</code> · role <b>${esc(roleOf(me))}</b></p>` : ""}
+${eqAddr(me, AUTHORITY) ? `<form id="restrict-form" class="row"><label for="restrict-address">restrict</label><input id="restrict-address" type="text" name="address" class="mono" placeholder="0x… an identity that has signed in once" pattern="0x[0-9a-fA-F]{40}" required autocomplete="off"><button type="submit" class="small" value="restricted">Restrict</button><button type="submit" class="small ghost" value="guest">Lift</button></form>
+<p class="note">The authority's one power, with its signature. A restricted identity reads and syncs, and writes nothing any peer accepts; what it wrote stays. Lift returns it to guest.</p>` : ""}</div>`
 
 // ── Router and render ───────────────────────────────────────────────────────
 export const route = () => {
@@ -560,12 +564,13 @@ document.addEventListener("click", async (e) => {
   } catch (err) { toast(err.message) }
 })
 document.addEventListener("submit", async (e) => {
-  const f = e.target; if (f.id !== "new-form" && f.id !== "name-form") return
+  const f = e.target; if (!["new-form", "name-form", "restrict-form"].includes(f.id)) return
   e.preventDefault()
   const field = (name) => (new FormData(f).get(name) ?? "").toString().trim()
   if (!me) { sessionStorage.dcodeGoto = location.hash; location.hash = "#/login"; return }
   try {
     if (f.id === "name-form") { await setMyName(field("name")); toast(field("name") ? `You are ${field("name")} on every peer.` : "Your address is your name again.", "success"); return }
+    if (f.id === "restrict-form") { await db.sm.assignRole(field("address"), e.submitter.value); toast(`${nameOf(field("address"))} is ${e.submitter.value} on every peer, by your signature.`, "success"); return }
     const { repo } = await newRepo(field("name"), field("description"), TEMPLATE, new FormData(f).get("private") === "on")
     location.hash = `#/r/${repo}` // its `main` is the branch you land on: the address does not have to say so
   } catch (err) { toast(err.message) }
@@ -645,9 +650,10 @@ export const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolv
 await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line", "star"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
   if (value && value.type === undefined) {
-    if (id.startsWith("user:")) { // an identity's own node: what it calls itself, and nothing else this app reads
+    if (id.startsWith("user:")) { // an identity's own node: what it calls itself, and the role the authority wrote on it
       const addr = id.slice(5).toLowerCase()
       if ((names.get(addr) ?? "") !== (value.name ?? "")) { value.name ? names.set(addr, value.name) : names.delete(addr); scheduleRender() }
+      if (roles.get(addr) !== value.role) { roles.set(addr, value.role); if (addr === me?.toLowerCase()) view?.remount(route().repo); scheduleRender() } // a restriction closes the buffer on screen
       return
     }
     return

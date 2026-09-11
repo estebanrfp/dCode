@@ -9,7 +9,7 @@
 // dependency is the rule: a view speaks the application's own vocabulary and
 // imports it from `app.js`; `app.js` never imports a view — it asks for one.
 import {
-  $, esc, eqAddr, me, db, toast,                                                    // the words the whole app uses
+  $, esc, eqAddr, me, db, toast, roleOf,                                            // the words the whole app uses
   nodes, branchesOf, commitsOf, prsOf, linesOf, commitOf, contentOf,                // the store, read
   defaultBranch, canWriteBranch, prStatus, tipsAt, isAncestor, mergeBase, at,       // what the graph says
   abbr, ago, plural, nameOf, short, branchLabel,                                    // how it reads
@@ -141,8 +141,8 @@ export function renderRepoBar() {
   $("dirty").title = viewing ? "A version from the timeline. Click its row again to come back to the buffer." : ""
   $("dirty").classList.toggle("hidden", !dirty && !viewing)
   $("discard").disabled = !dirty
-  $("commit-btn").textContent = viewing ? "Reading a version" : !me ? "Sign in to commit" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
-  $("commit-btn").disabled = !me || !!viewing
+  $("commit-btn").textContent = viewing ? "Reading a version" : !me ? "Sign in to commit" : roleOf(me) === "restricted" ? "Restricted: read only" : merging ? `Commit merge to ${branchLabel(repo, branch)}` : writable ? `Commit to ${branchLabel(repo, branch)}` : "Fork and commit"
+  $("commit-btn").disabled = !me || !!viewing || roleOf(me) === "restricted"
   // Why the button says what it says belongs to the button. The line below the
   // bar is for what you can act on, and appears only then.
   $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
