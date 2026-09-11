@@ -10,7 +10,7 @@
 // author's address, and a branch head can only be moved by the branch's owner
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
-import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js"
+import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260911" // the query defeats the browser's week-long cache of @latest: bump it with the engine
 import { ALICE, BOB, CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "@constitution"
 
 export const $ = (id) => document.getElementById(id)
