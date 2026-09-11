@@ -14,7 +14,7 @@
 // The key ring itself stays in the shell, because a synchronous "is this
 // sealed for me?" is asked all over the app; what is here is the crypto and
 // the vault's protocol.
-import { db, me, nodes, keyRings, unlocking, scheduleRender, remountBuffer } from "@app"
+import { db, me, nodes, keyRings, watches, inOrder, vaultChanged } from "@app"
 
 const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s) }
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
@@ -31,19 +31,19 @@ export const unseal = async (repo, sealed) => {
   for (const key of keyRings.get(repo) ?? []) { try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct)) } catch {} }
   return null
 }
-/** Fetch the vault: with an envelope the ring opens; without one the repository stays sealed for this identity. */
+/** Watch the vault: the engine reports it on arrival and on every rewrite — a grant opens the ring, a revocation closes it, a turned key renews it. One watch per repository per session. */
 export const unlock = async (repoId) => {
-  const repo = nodes.get(repoId); if (!repo?.value.vault || !me || unlocking.has(repoId)) return false
-  unlocking.add(repoId)
-  try {
-    const { result } = await db.sm.get(repo.value.vault).catch(() => ({ result: null }))
-    if (!result?.decrypted || !Array.isArray(result.value.keys)) { keyRings.set(repoId, null); return false }
-    keyRings.set(repoId, await Promise.all(result.value.keys.map(importKey)))
-    await decryptStored(repoId)
-    return true
-  } finally { unlocking.delete(repoId); scheduleRender() }
+  const repo = nodes.get(repoId); if (!repo?.value.vault || !me || watches.has(repoId)) return false
+  watches.set(repoId, null) // asked: what follows answers, however late the vault arrives
+  const { unsubscribe } = await db.sm.get(repo.value.vault, (result) => inOrder(repoId, async () => {
+    const opened = !!result?.decrypted && Array.isArray(result.value.keys)
+    keyRings.set(repoId, opened ? await Promise.all(result.value.keys.map(importKey)) : null)
+    if (opened) await decryptStored(repoId)
+    vaultChanged(repoId, opened)
+  }))
+  watches.set(repoId, unsubscribe)
 }
-/** Open every sealed line and commit of the repository already in the store, then redraw. */
+/** Open every sealed line and commit of the repository already in the store. */
 const decryptStored = async (repoId) => {
   for (const n of [...nodes.values()]) {
     if (n.value.repo !== repoId || n.value.ct === undefined) continue
@@ -51,7 +51,6 @@ const decryptStored = async (repoId) => {
     if (text === null) continue
     if (n.value.type === "line") n.value.text = text; else if (n.value.type === "commit") n.value.content = text
   }
-  remountBuffer(repoId) // the buffer on screen, if it is this repository's, now has text to show
 }
 /** A new repository's vault: the first key, sealed for its owner alone. Returns the node the repository points at. */
 export const createVault = async (repo) => {

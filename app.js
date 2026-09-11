@@ -104,7 +104,7 @@ export const at = (repoId, branchId, commitId) => {
 // sealed for me?" is asked synchronously all over the application, and three
 // doors into the module, so no caller anywhere has to know it is lazy.
 export const keyRings = new Map()  // repo id → CryptoKey[] newest first · null = asked, no envelope · absent = not asked yet
-export const unlocking = new Set() // repositories whose vault is being fetched
+export const watches = new Map()   // repo id → the vault's watch: the engine reports it on arrival and on every rewrite (null while the first answer is on its way)
 const plain = new Map()     // commit id → content, for a sealed commit this session wrote
 let vault = null, vaultLoading = null
 /** The vault module, the first time something sealed turns up. `null` if it could not be fetched. */
@@ -119,8 +119,8 @@ export const seal = async (repo, text) => {
 // nothing, and `unlock` is what brings the vault the moment a key is asked for.
 export const unseal = async (repo, sealed) => (keyRings.get(repo)?.length ? (await useVault())?.unseal(repo, sealed) : null) ?? null
 export const unlock = async (repoId) => (await useVault())?.unlock(repoId) ?? false
-/** The vault's way back to the buffer on screen, if the buffer is that repository's. */
-export const remountBuffer = (repoId) => view?.remount(repoId)
+/** The vault's way back into the view: the members are re-read, and the buffer on screen remounts if it is this repository's and it opened. */
+export const vaultChanged = (repoId, opened) => { view?.forgetMembers(); if (opened) view?.remount(repoId); scheduleRender() }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 export const abbr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
@@ -625,7 +625,7 @@ let lastMe = null
 db.sm.setSecurityStateChangeCallback((state) => {
   session = state
   me = state.isActive ? state.activeAddress : null
-  if (me !== lastMe) { keyRings.clear(); lastMe = me } // a key ring belongs to a session: the next look at a private repository asks the vault again
+  if (me !== lastMe) { for (const stop of watches.values()) stop?.(); watches.clear(); keyRings.clear(); lastMe = me } // a key ring and its watch belong to a session: the next look at a private repository asks the vault again
   renderSession()
   renderDoor(state)
   if (state.isActive) { // the door closes itself; a sign-in asked for by a page goes back there, one with nowhere to go lands on the identity view
@@ -638,11 +638,10 @@ db.sm.setSecurityStateChangeCallback((state) => {
 
 // ── The subscription: after everything it may call, for a returning device ──
 // A sealed record shows no `type` — its whole value is ciphertext — so the query
-// asks for our types or for a node without one, and a vault is recognised by the
-// id its repository already holds. A grant or a revocation rewrites that record,
-// which is how a member's page learns to ask for the key again, on its own.
+// also asks for nodes without one: that is where an identity's name lives. A
+// vault is watched by `vault.js` itself: the engine reports its every rewrite.
 const chains = new Map() // per node: sealed values open in arrival order
-const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).then(fn, fn); chains.set(id, p); return p }
+export const inOrder = (id, fn) => { const p = (chains.get(id) ?? Promise.resolve()).then(fn, fn); chains.set(id, p); return p }
 await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", "line", "star"] } }, { type: { $exists: false } }] } }, ({ id, value: stored, timestamp, action }) => {
   const value = stored && { ...stored } // our copy: what is opened here is written on no disk — the engine's object is what it persists
   if (value && value.type === undefined) {
@@ -651,8 +650,6 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
       if ((names.get(addr) ?? "") !== (value.name ?? "")) { value.name ? names.set(addr, value.name) : names.delete(addr); scheduleRender() }
       return
     }
-    const repo = of("repo").find((r) => r.value.vault && id.endsWith(r.value.vault))
-    if (repo && (keyRings.has(repo.id) || route().repo === repo.id)) { keyRings.delete(repo.id); view?.forgetMembers(); unlock(repo.id) }
     return
   }
   const known = nodes.get(id)
@@ -664,7 +661,7 @@ await db.map({ query: { $or: [{ type: { $in: ["repo", "branch", "commit", "pr", 
   if (line) { // the buffer follows its branch's lines directly; nothing else redraws for a keystroke
     if (action !== "removed" && value.ct !== undefined) inOrder(id, async () => { // sealed: open it first
       const text = await unseal(value.repo, value.ct)
-      if (text === null) { if (!keyRings.has(value.repo) && me) unlock(value.repo); return }
+      if (text === null) { unlock(value.repo); return } // no key here: ask the vault, once per session
       value.text = text; dispatchLine()
     })
     else dispatchLine()

@@ -14,7 +14,7 @@ import {
   defaultBranch, canWriteBranch, prStatus, tipsAt, isAncestor, mergeBase, at,       // what the graph says
   abbr, ago, plural, nameOf, short, branchLabel,                                    // how it reads
   patch, create, commitTo, forkAndCommit, putLine, keysBetween, seedLines,          // what it writes
-  keyRings, unlock, unlocking,                                                      // a private repository's key
+  keyRings, unlock, watches,                                                        // a private repository's key
   route, currentBranch, render, scheduleRender, pendingMerge,                       // the shell
 } from "@app"
 import {
@@ -277,9 +277,9 @@ export const renderRepo = (r, main) => {
   const repo = nodes.get(r.repo)
   if (!repo) { main.dataset.repo = ""; main.classList.remove("full"); unmountBuffer(); main.innerHTML = `<div class="page"><p class="muted">No such repository here yet. If it exists in this room, it will appear when it syncs.</p></div>`; return }
   if (repo.value.vault && !Array.isArray(keyRings.get(repo.id))) { // private: without the key there is nothing to show but the door
-    if (!keyRings.has(repo.id) && me) unlock(repo.id)
+    unlock(repo.id) // one watch per repository per session; a no-op after the first
     main.dataset.repo = ""; main.classList.remove("full"); unmountBuffer()
-    main.innerHTML = lockedPage(repo, unlocking.has(repo.id))
+    main.innerHTML = lockedPage(repo, watches.has(repo.id) && !keyRings.has(repo.id))
     document.title = `${repo.value.name} · dCode`
     return
   }
