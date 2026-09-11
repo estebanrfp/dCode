@@ -250,6 +250,10 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 .lock { font-size: 11px; color: var(--text-tertiary); font-family: var(--mono); border: 1px solid var(--border-strong); border-radius: 10px; padding: 0 6px; margin-left: var(--s2); }
 .empty { padding: var(--s5); color: var(--text-secondary); text-align: center; border: 1px dashed var(--border-strong); border-radius: 8px; }
+.empty p { margin: 0; }
+/* Why a room can be empty, under the line that says it is: the lesson of a
+   project with no server, not an apology for one. */
+.empty .note { max-width: 62ch; margin: var(--s3) auto 0; font-size: 12px; color: var(--text-tertiary); text-wrap: balance; }
 
 /* Forms: new repo, sign in, session, constitution */
 .formtable { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s3); align-items: start; max-width: 760px; margin-top: var(--s3); }

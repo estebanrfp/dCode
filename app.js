@@ -337,7 +337,9 @@ const repoList = () => {
   })
   const more = repoSort === "new" ? newestMore : page.length < all.length
   return `<p class="results-count">${plural(all.length, "repository", "repositories")}${q ? ` matching “${esc(repoQuery)}”` : ""}</p>
-${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches." : `No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.`}</div>`}
+${rows.length ? `<ul class="repos">${rows.join("")}</ul>` : `<div class="empty">${q || repoWho !== "all" ? "Nothing here matches."
+  : `<p>No repositories in this room yet${me ? ` — <a href="#/new">create the first</a>` : ""}.</p>
+<p class="note">Nothing here is hosted. A repository lives in the browsers that hold it and arrives when one of them joins the room, so an empty list means nobody holding one is connected — not that there is nothing. What you write stays on this device and travels from it.</p>`}</div>`}
 ${more ? `<p class="results-more">${page.length} of ${all.length} — keep scrolling</p>` : ""}`
 }
 const reposPage = () => `<div class="page repos-page">
