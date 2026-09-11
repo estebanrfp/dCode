@@ -149,3 +149,46 @@ test("a branch you own can be deleted — asked twice — and its lines go with 
   await alice.close(); await bob.close()
 })
 
+
+test("the owner grants write at the instant a collaborator moves the head: both writes survive on every peer, and the newcomer moves the head too", async ({ browser }) => {
+  const room = freshRoom("race")
+  const alice = await visitor(browser, room), bob = await visitor(browser, room), authority = await visitor(browser, room)
+  await loginAs(alice, "alice"); await loginAs(bob, "bob"); await loginAs(authority, "superadmin")
+  await connected(alice); await connected(bob); await connected(authority)
+  const { repo } = await createRepo(alice, "race")
+  const branch = await alice.page.evaluate(async (repo) => (await globalThis.db.map({ query: { type: "branch", repo } })).results[0].id, repo)
+  await tab(alice, "branches")
+  await alice.page.locator('#collab-form [name="address"]').fill(ADDR.bob)
+  await alice.page.locator('#collab-form button[type="submit"]').click()
+  await expect(alice.page.locator("#collabs li")).toContainText("Bob")
+  await go(bob, `#/r/${repo}`)
+  await expect(bob.page.locator("#commit-btn")).toHaveText("Commit to main")
+  await setLine(bob, "Hello from dCode", "  <h1>Two writes at once</h1>")
+  await bob.page.locator("#message").fill("Bob, while Alice grants")
+
+  // The same instant, on two devices, over the same branch node: Bob's commit moves `head`,
+  // Alice's grant adds a collaborator. Last-write-wins keeps one; the engine re-applies the
+  // other's field over it — neither the head nor the grant is lost.
+  const at = Date.now() + 700
+  await Promise.all([
+    bob.page.evaluate((at) => new Promise((r) => setTimeout(() => { document.getElementById("commit-btn").click(); r() }, Math.max(0, at - Date.now()))), at),
+    alice.page.evaluate(([at, branch, who]) => new Promise((r) => setTimeout(() => globalThis.db.sm.acls.grant(branch, who, "write").then(r), Math.max(0, at - Date.now()))), [at, branch, ADDR.superadmin]),
+  ])
+  const newest = bob.page.locator("#toasts .toast").last()
+  await expect(newest).toContainText(/Committed ([0-9a-f]{7})/)
+  const id = (await newest.textContent()).match(/Committed ([0-9a-f]{7})/)[1]
+
+  // Both survive, everywhere: the head is Bob's commit, and the grant stands.
+  await go(authority, `#/r/${repo}`)
+  for (const v of [alice, bob, authority]) await expect(head(v.page)).toHaveText(`@ ${id}`)
+  await tab(alice, "branches")
+  await expect(alice.page.locator("#collabs li")).toHaveCount(2)
+  await expect(alice.page.locator("#collabs")).toContainText("Superadmin")
+  // The grant made in the race is real on every peer: the newcomer commits straight to main, and the head follows.
+  await expect(authority.page.locator("#commit-btn")).toHaveText("Commit to main")
+  await setLine(authority, "Two writes at once", "  <h1>And a third, granted in the race</h1>")
+  const second = await commit(authority, "Granted during the race")
+  await expect(head(alice.page)).toHaveText(`@ ${second}`)
+  await expect(head(bob.page)).toHaveText(`@ ${second}`)
+  await alice.close(); await bob.close(); await authority.close()
+})
