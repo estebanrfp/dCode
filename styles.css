@@ -421,6 +421,10 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 .prs .pr-meta .st.merged { color: var(--ok); }
 .prs .pr-meta .st.open { color: var(--warn); }
 .prs .pr-actions { display: flex; gap: var(--s1); margin-top: 3px; }
+.pr-form h2 { margin: var(--s4) 0 var(--s2); }
+.pr-form .pr-lead { margin: 0 0 var(--s2); display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+.pr-form .pr-lead code { font-family: var(--mono); }
+.pr-form .dim { margin: var(--s2) 0 0; font-size: 12px; max-width: 70ch; }
 .collabs li .addr, .members li .addr { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 
 /* The timeline: a graph in the margin, one row per commit, every row a runnable version */

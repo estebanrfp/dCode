@@ -88,19 +88,28 @@ const renderBranches = (repo, branches, branch, commits, fromId) => {
   $("branches").innerHTML = branches.map((b) => `<li class="${b.id === branch?.id ? "sel" : ""}" data-branch="${esc(b.id)}"><a href="${esc(at(repo.id, b.id))}">${esc(branchLabel(repo, b))}</a>${canWriteBranch(b) && !eqAddr(b.value.owner, me) ? `<span class="who" title="you were granted write">write</span>` : ""}<span class="n" title="head · commits">${esc(short(b.value.head))} · ${counts.get(b.id) ?? 0}</span>${eqAddr(b.value.owner, me) && b.id !== defaultBranch(repo, branches)?.id ? `<button class="small ghost" data-act="delete-branch" data-branch="${esc(b.id)}" title="Delete this branch: its buffer goes, its commits stay">Delete</button>` : ""}</li>`).join("") || `<li class="dim">no branches</li>`
   $("branch-form-box").innerHTML = me && fromId ? `<form id="branch-form" class="row"><input type="text" name="name" placeholder="new branch" pattern="[A-Za-z0-9._\\-]{1,40}" required autocomplete="off"><button type="submit" class="small">Branch from ${esc(short(fromId))}</button></form>` : ""
 }
+// A pull request reads as it does on GitHub: who wants to merge what into
+// what, in which state, and the one action each person has — the target's
+// owner merges, the proposer updates or withdraws. The form to open one says
+// the same sentence before asking for a title.
 const renderPRs = (repo, branches, branch, prs) => {
   $("prs").innerHTML = prs.map((pr) => {
     const from = nodes.get(pr.value.from), into = nodes.get(pr.value.into), st = prStatus(pr), open = st.startsWith("open")
     const actions = []
-    if (open && canWriteBranch(into)) actions.push(`<button class="small" data-act="merge" data-pr="${esc(pr.id)}">Merge</button>`)
-    if (open && st === "open, behind" && eqAddr(pr.value.owner, me)) actions.push(`<button class="small" data-act="update-pr" data-pr="${esc(pr.id)}">Update to ${esc(short(from?.value.head))}</button>`)
-    if (open && eqAddr(pr.value.owner, me)) actions.push(`<button class="small" data-act="withdraw" data-pr="${esc(pr.id)}">Withdraw</button>`)
-    return `<li data-pr="${esc(pr.id)}"><span class="pr-title">${esc(pr.value.title)}</span><div class="pr-meta">${from ? esc(branchLabel(repo, from)) : "?"} → ${into ? esc(branchLabel(repo, into)) : "?"} · ${esc(short(pr.value.commit))} · by ${esc(nameOf(pr.value.owner))} · <span class="st ${open ? "open" : st}">${esc(st)}</span></div>${actions.length ? `<div class="pr-actions">${actions.join("")}</div>` : ""}</li>`
-  }).join("") || `<li class="dim">none</li>`
-  const targets = branch && eqAddr(branch.value.owner, me) ? branches.filter((b) => b.id !== branch.id) : []
+    if (open && canWriteBranch(into)) actions.push(`<button class="small" data-act="merge" data-pr="${esc(pr.id)}" title="Move ${esc(into ? branchLabel(repo, into) : "the target")} to this commit: a fast-forward when it has not moved, a merge commit otherwise">Merge pull request</button>`)
+    if (open && st === "open, behind" && eqAddr(pr.value.owner, me)) actions.push(`<button class="small" data-act="update-pr" data-pr="${esc(pr.id)}" title="Your branch has moved on since you proposed: propose its current head instead">Update to ${esc(short(from?.value.head))}</button>`)
+    if (open && eqAddr(pr.value.owner, me)) actions.push(`<button class="small" data-act="withdraw" data-pr="${esc(pr.id)}" title="Close this pull request without merging">Withdraw</button>`)
+    return `<li data-pr="${esc(pr.id)}"><span class="pr-title">${esc(pr.value.title)}</span><div class="pr-meta"><b>${esc(nameOf(pr.value.owner))}</b> wants to merge <b>${from ? esc(branchLabel(repo, from)) : "?"}</b> into <b>${into ? esc(branchLabel(repo, into)) : "?"}</b> · ${esc(short(pr.value.commit))} · <span class="st ${open ? "open" : st}" title="${st === "open, behind" ? "Your branch has moved on since you proposed" : st === "merged" ? "The proposed commit is an ancestor of the target's head" : ""}">${esc(st)}</span></div>${actions.length ? `<div class="pr-actions">${actions.join("")}</div>` : ""}</li>`
+  }).join("") || `<li class="dim">No pull requests yet.</li>`
+  const main = defaultBranch(repo, branches), isMain = !!branch && branch.id === main?.id
+  const targets = branch && !isMain && eqAddr(branch.value.owner, me) ? branches.filter((b) => b.id !== branch.id) : []
+  const label = branch && branchLabel(repo, branch)
   $("pr-form-box").innerHTML = targets.length && branch.value.head
-    ? `<form id="pr-form" class="row"><select name="into">${targets.map((b) => `<option value="${esc(b.id)}">into ${esc(branchLabel(repo, b))}</option>`).join("")}</select><input type="text" name="title" placeholder="title" maxlength="120" required autocomplete="off"><button type="submit" class="small">Propose ${esc(branchLabel(repo, branch))}</button></form>`
-    : ""
+    ? `<form id="pr-form" class="pr-form"><h2>Open a pull request</h2><p class="pr-lead">Propose <b>${esc(label)}</b> at <code>${esc(short(branch.value.head))}</code> into <select name="into" aria-label="Target branch">${targets.map((b) => `<option value="${esc(b.id)}">${esc(branchLabel(repo, b))}</option>`).join("")}</select></p><div class="row"><input type="text" name="title" placeholder="Title — what this change does" maxlength="120" required autocomplete="off"><button type="submit" class="small">Create pull request</button></div><p class="dim">As on GitHub: the pull request carries the commit at your branch's head, and the owner of the target branch merges it — a fast-forward when that branch has not moved, a merge commit otherwise. You can update it to a newer commit or withdraw it.</p></form>`
+    : !me ? ""
+    : branch && !eqAddr(branch.value.owner, me) ? `<p class="dim">To propose a change to <b>${esc(label)}</b>, edit and commit: your commit lands on a branch of your own, forked from here, and the pull request is opened from there.</p>`
+    : isMain ? `<p class="dim"><b>${esc(label)}</b> receives pull requests: anyone who commits here gets a branch of their own, forked from it, and proposes it from there. Your own branches propose into it from their Pull requests tab.</p>`
+    : branch ? `<p class="dim">${esc(label)} is the only branch: there is nothing to propose it into.</p>` : ""
 }
 const renderCollabs = (repo, branch) => {
   const mine = !!branch && eqAddr(branch.value.owner, me), entries = Object.entries(branch?.value.collaborators ?? {})
@@ -378,7 +387,7 @@ document.addEventListener("submit", async (e) => {
         f.reset(); toast(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`, "success"); runPreview(content, `${short(id)}, the head`); scheduleRender()
       } else {
         const fork = await forkAndCommit(branch, message, content)
-        f.reset(); location.hash = at(repo.id, fork.branch); toast(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}.`)
+        f.reset(); location.hash = at(repo.id, fork.branch); toast(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}. Propose it from the Pull requests tab.`)
       }
       return
     }
@@ -390,7 +399,7 @@ document.addEventListener("submit", async (e) => {
     }
     if (f.id === "pr-form") {
       await create({ type: "pr", repo: repo.id, from: branch.id, into: field("into"), title: field("title"), commit: branch.value.head })
-      f.reset(); toast("Pull request opened. It is a node you own; the target's owner merges it.", "success"); return
+      f.reset(); toast(`Pull request opened: the owner of ${branchLabel(repo, nodes.get(field("into")))} can merge it; you can update or withdraw it.`, "success"); return
     }
     if (f.id === "collab-form") {
       await db.sm.acls.grant(branch.id, field("address"), "write")

@@ -103,7 +103,19 @@ const mergeText = (base, mine, theirs) => {
   return base.slice(0, a.from) + a.ins + base.slice(a.to, b.from) + b.ins + base.slice(b.to)
 }
 const savers = new Map()
-const saveNow = (id, li) => { savers.delete(id); known.set(id, fieldOf(li).value); return putLine(li.dataset.repo, li.dataset.branch, fieldOf(li).value, orderOf(li), id) }
+// Before writing, the save takes what the graph holds NOW: a remote edit that
+// landed on the graph reaches this line a frame later, and a save in between
+// would write over it as a plain overwrite — no collision for the engine to
+// rescue, the other writer's letters gone. Merged first, the save carries both.
+const saveNow = async (id, li) => {
+  const { result } = await db.get(id)
+  if (!savers.has(id)) return // flushed or cancelled meanwhile
+  const stored = result?.value
+  const text = stored ? (stored.ct !== undefined ? await unseal(li.dataset.repo, stored.ct) : stored.text) : null
+  if (text != null && text !== known.get(id)) updateLine(id, { text, order: stored.order ?? orderOf(li) })
+  savers.delete(id); known.set(id, fieldOf(li).value)
+  return putLine(li.dataset.repo, li.dataset.branch, fieldOf(li).value, orderOf(li), id)
+}
 function scheduleSave(id, li) { clearTimeout(savers.get(id)); savers.set(id, setTimeout(() => saveNow(id, li), 250)) }
 const cancelSave = (id) => { clearTimeout(savers.get(id)); savers.delete(id) }
 export const flushSaves = () => Promise.all([...savers.keys()].map((id) => { clearTimeout(savers.get(id)); const li = $(id); return li ? saveNow(id, li) : savers.delete(id) }))
