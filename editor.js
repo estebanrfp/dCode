@@ -14,7 +14,7 @@ import {
   $, esc, me, db, nodes, route, roleOf,    // the words the whole app uses
   putLine, keysBetween, keyBetween, linesOf, // a line is a node: this is how one is written
   keyRings, seal, unseal,                  // a private repository's lines travel sealed, keystrokes included
-  wire, hueOf,                             // the room's ephemeral channel, and a peer's colour: both are the shell's
+  wire, hueOf, whoIs, nameOf,              // the room's ephemeral channel, a peer's colour and the name it proved: all the shell's
   plural,                                  // how it reads
 } from "@app"
 import { lcs } from "@text"
@@ -467,7 +467,7 @@ function renderMarks() {
     mirror.append(text.slice(0, start))
     if (end > start) { const sel = document.createElement("span"); sel.className = "remote-sel"; sel.style.background = `hsl(${hueOf(peerId)} 75% 70% / .25)`; sel.textContent = text.slice(start, end); mirror.append(sel) }
     const caret = document.createElement("span"); caret.className = "remote-caret"; caret.style.borderColor = colorOf(peerId)
-    const label = document.createElement("span"); label.className = "caret-label"; label.style.background = colorOf(peerId); label.textContent = peerId.slice(0, 4)
+    const label = document.createElement("span"); label.className = "caret-label"; label.style.background = colorOf(peerId); label.textContent = whoIs(peerId) ? nameOf(whoIs(peerId)) : peerId.slice(0, 4) // the name the window proved when it walked in; else the connection's first letters
     caret.append(label); mirror.append(caret, text.slice(end))
     li.querySelector(".cell").append(mirror)
   }

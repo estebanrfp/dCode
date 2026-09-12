@@ -10,7 +10,7 @@
 // author's address, and a branch head can only be moved by the branch's owner
 // or an address the owner granted. Every commit is a whole single-file HTML
 // project, so the buffer and every row of the timeline run, beside the code.
-import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260911" // the query defeats the browser's week-long cache of @latest: bump it with the engine
+import { gdb } from "https://cdn.jsdelivr.net/npm/genosdb@latest/dist/index.min.js?v=20260912" // the query defeats the browser's week-long cache of @latest: bump it with the engine
 import { ALICE, BOB, CONSTITUTION, DEMO_IDENTITIES, governanceRules } from "@constitution"
 
 export const $ = (id) => document.getElementById(id)
@@ -689,34 +689,42 @@ subscribed = true
 // now. WHERE each one is, is the application's, and it rides the SAME ephemeral
 // channel as the carets: a window says where it is when that changes, hands it
 // to a peer that arrives, and a peer that leaves takes it with it. Nothing here
-// is written to the graph and nothing here is signed — a channel message
-// carries no signature, so this counts windows and names nobody.
+// is written to the graph. The announcement is the one message that is signed
+// (db.sm.sign): every peer recovers who sent it (db.sm.verify), and that name
+// labels the dot — and the caret beside the code, which rides unsigned behind
+// it. A window with no session announces in the clear and is named nobody; a
+// forged or stale announcement is no announcement at all. Presence labels: the
+// graph never reads it, and nothing here decides.
 const presence = () => { const n = Object.keys(db.room?.getPeers() ?? {}).length; $("presence").textContent = `${n} peer${n === 1 ? "" : "s"}` }
 export const wire = db.room?.channel("presence") // one ephemeral channel for the whole app: `where` is the shell's, `caret` and `text` are the editor's
 export const hueOf = (id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) // a peer's colour, so the dot in the bar is the caret in the code
-const peerWhere = new Map() // peerId → the repository that window has open
-let myWhere = null
+const peerWhere = new Map() // peerId → { repo: the repository that window has open, who: the address that signed the announcement, or null }
+let myWhere = null, saidAs = null
+export const whoIs = (peerId) => peerWhere.get(peerId)?.who // the identity a window proved, for the caret the editor draws
 /** Every "N here" on screen, from the one map: the index's cards and the repository's bar. */
 const paintHere = () => {
   for (const el of document.querySelectorAll("[data-here]")) {
-    const there = [...peerWhere].filter(([, repo]) => repo === el.dataset.here).map(([peer]) => peer)
+    const there = [...peerWhere].filter(([, w]) => w.repo === el.dataset.here)
     const mine = myWhere === el.dataset.here, n = there.length + (mine ? 1 : 0)
-    el.innerHTML = n ? `${there.map((p) => `<i class="dot" style="--peer:${hueOf(p)}"></i>`).join("")}${mine ? `<i class="dot you" title="You"></i>` : ""}${n} here` : ""
+    el.innerHTML = n ? `${there.map(([p, w]) => `<i class="dot" style="--peer:${hueOf(p)}"${w.who ? ` title="${esc(nameOf(w.who))}"` : ""}></i>`).join("")}${mine ? `<i class="dot you" title="You"></i>` : ""}${n} here` : ""
   }
 }
-/** Where this window is: the route says it, and only a move is worth a message. */
+/** Where this window is, signed when a session can sign it: to the room, or to the one peer that just arrived. */
+const sayWhere = async (to) => { const where = { kind: "where", repo: myWhere }; wire?.send(me ? await db.sm.sign(where) : where, to) }
+/** Where this window is: the route says it, and only a move — or a session that changed — is worth a message. */
 const whereAmI = (r) => {
   const now = r.page === "r" && r.repo ? r.repo : null
-  if (now === myWhere) return
-  myWhere = now
-  wire?.send({ kind: "where", repo: now })
+  if (now === myWhere && saidAs === me) return
+  myWhere = now; saidAs = me
+  sayWhere()
 }
 wire?.on("message", (msg, from) => {
-  if (msg?.kind !== "where") return // the carets are the editor's, and it reads them itself
-  msg.repo ? peerWhere.set(from, msg.repo) : peerWhere.delete(from)
+  const who = db.sm.verify(msg), where = who ? msg.value : msg // signed: its author; plain: nobody; forged or stale: not a `where` at all
+  if (where?.kind !== "where") return // the carets are the editor's, and it reads them itself
+  where.repo ? peerWhere.set(from, { repo: where.repo, who }) : peerWhere.delete(from)
   paintHere()
 })
-db.room?.on("peer:join", (peerId) => { presence(); if (myWhere) wire.send({ kind: "where", repo: myWhere }, peerId) }) // one arrival, one message, to the one who arrived
+db.room?.on("peer:join", (peerId) => { presence(); if (myWhere) sayWhere(peerId) }) // one arrival, one message, to the one who arrived
 db.room?.on("peer:leave", (peerId) => { presence(); peerWhere.delete(peerId); paintHere() })
 db.room?.on("peer:lost", (peerId) => { peerWhere.delete(peerId); paintHere() }) // the goodbye a closing tab broadcasts: the departure itself
 presence()
