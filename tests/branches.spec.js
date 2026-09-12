@@ -34,12 +34,9 @@ test("a fork, a pull request and a fast-forward merge; a tampered client cannot 
   await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(2)
   await expect(head(alice.page)).toHaveText(mainHead)
-  // Main's buffer still holds Bob's edit, uncommitted; Alice discards it and main is clean.
-  await expect(alice.page.locator("#dirty")).toBeVisible()
-  await tab(alice, "preview") // Discard sits in the panel that runs the page
-  await alice.page.locator("#discard").click()
-  await expect(alice.page.locator("#dirty")).toBeHidden()
+  // Bob's edit went with his fork: main's buffer rejoined its head on Alice's screen, nothing to discard.
   await seesLine(alice, "Hello from dCode")
+  await expect(alice.page.locator("#dirty")).toBeHidden()
 
   // Bob proposes his branch into main. The pull request is a node he owns.
   await tab(bob, "pulls")

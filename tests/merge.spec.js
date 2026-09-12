@@ -21,13 +21,13 @@ test("divergent edits on different lines merge into one commit with two parents;
   await tab(bob, "history")
   await expect(rows(bob.page)).toHaveCount(1)
   await setLine(bob, "Clicked 0 times", '  <button id="count">Pressed 0 times</button>')
+  await seesLine(alice, "Pressed 0 times") // the shared buffer, on Alice's screen too
   await commit(bob, "Bob edits the button")
   await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
   await tab(alice, "history")
   await expect(rows(alice.page)).toHaveCount(2)
-  await expect(alice.page.locator("#dirty")).toBeVisible()
-  await tab(alice, "preview") // Discard sits in the panel that runs the page
-  await alice.page.locator("#discard").click()
+  // Bob's edit went with his fork: main's buffer rejoined its head on Alice's screen, nothing to discard.
+  await seesLine(alice, "Clicked 0 times")
   await expect(alice.page.locator("#dirty")).toBeHidden()
   await setLine(alice, "Hello from dCode", "  <h1>Hello from Alice</h1>")
   await commit(alice, "Alice edits the heading")

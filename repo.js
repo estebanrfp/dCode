@@ -154,7 +154,7 @@ export function renderRepoBar() {
   $("commit-btn").disabled = !me || !!viewing || roleOf(me) === "restricted"
   // Why the button says what it says belongs to the button. The line below the
   // bar is for what you can act on, and appears only then.
-  $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here.`
+  $("commit-btn").title = !me || writable || viewing ? "" : `Everyone edits this buffer; only ${nameOf(branch.value.owner)} moves ${branchLabel(repo, branch)}. Your commit will go to a branch of yours, forked from here, and this buffer rejoins its head.`
   // Beside the branch it is about: whose head it is, said where you read which branch you are on.
   $("branch-owner").textContent = `· only ${nameOf(branch.value.owner)} moves it`
   $("branch-owner").title = $("commit-btn").title
@@ -387,6 +387,7 @@ document.addEventListener("submit", async (e) => {
         f.reset(); toast(`Committed ${short(id)} to ${branchLabel(repo, branch)}.`, "success"); runPreview(content, `${short(id)}, the head`); scheduleRender()
       } else {
         const fork = await forkAndCommit(branch, message, content)
+        await applyText(branch.id, contentOf(branch.value.head)) // the buffer went with the fork: this branch rejoins its head, on every screen
         f.reset(); location.hash = at(repo.id, fork.branch); toast(`Committed ${short(fork.id)} on your own branch: you cannot move ${branchLabel(repo, branch)}. Propose it from the Pull requests tab.`)
       }
       return
