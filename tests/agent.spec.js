@@ -5,7 +5,7 @@
  * fixed file; the fitting, the ownership and the wire are what is pinned.
  */
 import { expect, test } from "@playwright/test"
-import { assertTransport, branchRows, connected, createRepo, head, loginAs, preview, prRows, rows, seesLine, tab, visitor } from "./_helpers.js"
+import { assertTransport, branchRows, connected, createRepo, head, lineIndex, loginAs, preview, prRows, rows, seesLine, tab, visitor } from "./_helpers.js"
 
 const APP = `<!DOCTYPE html>
 <html lang="en">
@@ -78,7 +78,9 @@ test("the agent edits the buffer as you — in place, the unchanged lines keepin
   await bob.page.evaluate(() => globalThis.__agentRelease())
   await expect(bob.page.locator("#toasts")).toContainText("on your own branch") // the fork the button makes, once
   await expect(bob.page.locator("#branch-select option:checked")).toHaveText(/Bob\/main/)
-  await seesLine(alice, "one added by Bob") // main's shared buffer changed on Alice's screen too; main's head did not move
+  await seesLine(bob, "one added by Bob") // his fork holds the agent's change…
+  await expect.poll(() => lineIndex(alice.page, "one added by Bob")).toBe(-1) // …and main's shared buffer rejoined its head on Alice's screen; main's head did not move
+  await expect(alice.page.locator("#dirty")).toBeHidden()
   await expect(branchRows(alice.page)).toHaveCount(2)
   await tab(bob, "pulls")
   await bob.page.locator('#pr-form [name="title"]').fill("From the agent, via Bob")
